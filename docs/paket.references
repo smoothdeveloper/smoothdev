@@ -1,0 +1,11 @@
+FSharp.Core
+Nacara.Core
+Nacara.Plugin.Markdown
+Nacara.Plugin.Highlight.TreeSitter
+Nacara.Plugin.Search
+Nacara.Plugin.Sitemap
+Nacara.Plugin.Assets.LightningCss
+Nacara.Plugin.Assets.Esbuild
+Nacara.Plugin.Assets.Nuglify
+Nacara.Plugin.Deploy.GitHubPages
+Nacara.Theme.Default

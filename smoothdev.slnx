@@ -1,0 +1,22 @@
+<Solution>
+  <Folder Name="/docs/">
+    <Project Path="docs/Docs.fsproj" />
+  </Folder>
+  <Folder Name="/misc/">
+    <File Path=".config/dotnet-tools.json" />
+    <File Path=".editorconfig" />
+    <File Path="global.json" />
+    <File Path="LICENSE" />
+    <File Path="paket.dependencies" />
+    <File Path="paket.lock" />
+    <File Path="README.md" />
+  </Folder>
+  <Folder Name="/tools/" />
+  <Folder Name="/tools/smoothdev.web/" />
+  <Folder Name="/tools/smoothdev.web/src/">
+    <Project Path="tools/smoothdev.web/src/SmoothDev.Web/SmoothDev.Web.fsproj" />
+  </Folder>
+  <Folder Name="/tools/smoothdev.web/tests/">
+    <Project Path="tools/smoothdev.web/tests/SmoothDev.Web.Tests/SmoothDev.Web.Tests.fsproj" />
+  </Folder>
+</Solution>

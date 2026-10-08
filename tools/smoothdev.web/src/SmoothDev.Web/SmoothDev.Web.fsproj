@@ -1,0 +1,39 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RollForward>Major</RollForward>
+    <AssemblyName>smoothdev-web</AssemblyName>
+    <RootNamespace>SmoothDev.Web</RootNamespace>
+  </PropertyGroup>
+  <PropertyGroup>
+    <!-- dotnet tool -->
+    <PackAsTool>true</PackAsTool>
+    <ToolCommandName>smoothdev-web</ToolCommandName>
+    <PackageId>smoothdev.web</PackageId>
+    <Version>0.1.0</Version>
+    <Authors>Gauthier Segay</Authors>
+    <PackageLicenseExpression>AGPL-3.0-only</PackageLicenseExpression>
+    <Description>Bird's-eye view of a Vite + Fable + .NET web app in development: dev server under dotnet watch, Vite and Fable, production server, dist packaging, logs and ports, from a terminal UI or a small web GUI.</Description>
+    <PackageTags>fable;vite;dotnet-watch;dev-server;tui</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageOutputPath>$(MSBuildThisFileDirectory)../../artifacts</PackageOutputPath>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Types.fs" />
+    <Compile Include="Ports.fs" />
+    <Compile Include="Config.fsi" />
+    <Compile Include="Config.fs" />
+    <Compile Include="Posix.fs" />
+    <Compile Include="State.fs" />
+    <Compile Include="Runner.fs" />
+    <Compile Include="StaticServer.fs" />
+    <Compile Include="Actions.fs" />
+    <Compile Include="Tui.fs" />
+    <Compile Include="Gui.fs" />
+    <Compile Include="Program.fs" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="../../README.md" Pack="true" PackagePath="/" />
+  </ItemGroup>
+  <Import Project="..\..\..\..\.paket\Paket.Restore.targets" />
+</Project>
