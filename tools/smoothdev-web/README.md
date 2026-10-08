@@ -246,7 +246,7 @@ fails loudly instead of silently moving to a port the tool does not know.
 
 ### The server must use the URL it was given
 
-[ASP.NET server](https://smoothdeveloper.github.io/tools/smoothdev-web/server-url/#server-url) is the page for this. An ASP.NET server listens on the URL in `ASPNETCORE_URLS`.
+[ASP.NET server](https://smoothdeveloper.github.io/smoothdev/tools/smoothdev-web/server-url/#server-url) is the page for this. An ASP.NET server listens on the URL in `ASPNETCORE_URLS`.
 
 ## Making an app smoothdev.web-enabled
 

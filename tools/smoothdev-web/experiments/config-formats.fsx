@@ -3,7 +3,7 @@
 ///
 ///   dotnet fsi experiments/config-formats.fsx
 ///
-/// Run from tools/smoothdev.web. Libraries that exist on NuGet are tried.
+/// Run from tools/smoothdev-web. Libraries that exist on NuGet are tried.
 /// Formats with no .NET parser are reported as such; their text is still here
 /// so the note and the script stay on the same example.
 

@@ -430,6 +430,22 @@ garbage line
         Expect.isTrue (has "PORT") "extra kept"
       }
 
+      test "the documentation link is the server-url page next to this tool" {
+        Expect.equal
+          DocLink.url
+          "https://smoothdeveloper.github.io/smoothdev/tools/smoothdev-web/server-url/#server-url"
+          "route follows the repo path under the published site root"
+        Expect.isTrue DocLink.page.Exists "the page is in the repository"
+        let text = File.ReadAllText DocLink.page.FullName
+        Expect.stringContains text "id=\"server-url\"" "the fragment on the link is in the page"
+      }
+
+      test "a listen line on another port is reported, a build log url is not" {
+        let log = "see https://127.0.0.1:9999/docs\nNow listening on: http://127.0.0.1:8766\nlistening http://127.0.0.1:5000\n"
+        let found = Runner.otherListenUrls log 5000
+        Expect.equal found [| "http://127.0.0.1:8766" |] "only the other listen url"
+      }
+
       test "ansi colour in a log line becomes html" {
         let line = "\u001b[38;5;196mERR\u001b[0m plain"
         let html = Runner.ansiHtml line

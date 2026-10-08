@@ -16,6 +16,20 @@ let html (s: string) =
   | null -> ""
   | encoded -> encoded
 
+let private urlInText =
+  Text.RegularExpressions.Regex(@"https?://[^\s<]+")
+
+/// Makes URLs in an already-encoded message into links.
+let linkify (encoded: string) =
+  urlInText.Replace(encoded, fun (m: Text.RegularExpressions.Match) -> $"<a href=\"{m.Value}\">{m.Value}</a>")
+
+let messageItem (m: string) =
+  let kind, text =
+    if m.StartsWith "fail\t" then "error", m.Substring 5
+    else "", m
+  let cls = if kind = "" then "" else $" class=\"{kind}\""
+  $"<li{cls}>{linkify (html text)}</li>"
+
 /// Keeps a log view at the bottom while the reader is already there, and leaves it
 /// where it is when they have scrolled up.
 let logStick =
@@ -161,7 +175,9 @@ let page (cfg: Config) (rows: Row array) (selected: string option) (messages: st
   form {{ display: inline; }} button {{ margin-right: .3rem; padding: .15rem .6rem; cursor: pointer; }}
   .bar {{ margin: 1rem 0; }} .busy {{ color: #b45309; margin-left: 1rem; }}
   pre.log {{ background: #11151c; color: #d1d5db; padding: .8rem; max-height: 26rem; overflow: auto; font-size: 12px; white-space: pre-wrap; }}
-  .tabs a {{ margin-right: .6rem; }} .tabs a.on {{ font-weight: 700; }} ul {{ color: #374151; }}
+  .tabs a {{ margin-right: .6rem; }} .tabs a.on {{ font-weight: 700; }} ul {{ color: #374151; padding-left: 0; list-style: none; }}
+  li.error {{ background: #fef2f2; border-left: 3px solid #dc2626; padding: .35rem .6rem; margin: .4rem 0; }}
+  li.error a {{ color: #b91c1c; }}
 </style></head><body>
 <h1>smoothdev-web: {html cfg.name}</h1>
 {back}
@@ -173,7 +189,7 @@ let page (cfg: Config) (rows: Row array) (selected: string option) (messages: st
 <div class="tabs">log: {tabs}</div>
 <pre class="log">{log}</pre>
 {logStick}
-<ul>{messages |> Array.map (fun m -> $"<li>{html m}</li>") |> String.concat ""}</ul>
+<ul>{messages |> Array.map messageItem |> String.concat ""}</ul>
 </body></html>
 """
 
@@ -211,8 +227,9 @@ let write (response: HttpListenerResponse) (status: int) (contentType: string) (
 let run (cfg: Config) (preferredPort: int option) (browser: bool) =
   let messages = ConcurrentQueue<string>()
 
-  let push (line: string) =
-    messages.Enqueue $"{DateTime.Now:``HH:mm:ss``} {line}"
+  let push level (line: string) =
+    let kind = if level = Fail then "fail\t" else ""
+    messages.Enqueue $"{kind}{DateTime.Now:``HH:mm:ss``} {line}"
 
     while messages.Count > 12 do
       messages.TryDequeue() |> ignore
@@ -225,7 +242,7 @@ let run (cfg: Config) (preferredPort: int option) (browser: bool) =
           printfn "%s" msg
 
           if level <> Detail then
-            push msg
+            push level msg
       echo = fun _ _ -> ()
       browser = true
     }
@@ -317,14 +334,14 @@ let run (cfg: Config) (preferredPort: int option) (browser: bool) =
                 let! _ = Actions.perform ctx action
                 ()
               with e ->
-                push e.Message
+                push Fail e.Message
 
               busy.Value <- ""
             }
             :> Task)
           |> ignore
         else
-          push $"busy ({busy.Value}): {action} ignored"
+          push Info $"busy ({busy.Value}): {action} ignored"
 
         c.Response.Redirect "/"
         c.Response.StatusCode <- 303
@@ -525,8 +542,9 @@ setInterval(keep, 300);
   let busy = ref ""
   let managed = Collections.Generic.Dictionary<string, Config>()
 
-  let push line =
-    messages.Enqueue $"{DateTime.Now:``HH:mm:ss``} {line}"
+  let push level line =
+    let kind = if level = Fail then "fail\t" else ""
+    messages.Enqueue $"{kind}{DateTime.Now:``HH:mm:ss``} {line}"
 
     while messages.Count > 12 do
       messages.TryDequeue() |> ignore
@@ -615,7 +633,7 @@ setInterval(keep, 300);
 
                 let actx: Actions.Context =
                   { config = cfg
-                    say = fun _ msg -> push msg
+                    say = fun level msg -> push level msg
                     echo = fun _ _ -> ()
                     browser = true }
 
@@ -625,14 +643,14 @@ setInterval(keep, 300);
                       let! _ = Actions.perform actx action
                       ()
                     with e ->
-                      push e.Message
+                      push Fail e.Message
 
                     busy.Value <- ""
                   }
                   :> Task)
                 |> ignore
               else
-                push $"busy ({busy.Value}): {action} ignored"
+                push Info $"busy ({busy.Value}): {action} ignored"
 
               ctx.Response.Redirect(hereOf rel kind)
               ctx.Response.StatusCode <- 303

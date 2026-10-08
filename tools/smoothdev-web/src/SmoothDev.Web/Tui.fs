@@ -188,7 +188,11 @@ let run (cfg: Config) =
 
       let say: Actions.Context =
         { ctx with
-            say = fun _ msg -> AnsiConsole.MarkupLine(Markup.Escape msg)
+            say =
+              fun level msg ->
+                let text = Markup.Escape msg
+                let line = if level = Fail then $"[red]{text}[/]" else text
+                AnsiConsole.MarkupLine line
         }
 
       (Actions.stopOwned say).GetAwaiter().GetResult() |> ignore
