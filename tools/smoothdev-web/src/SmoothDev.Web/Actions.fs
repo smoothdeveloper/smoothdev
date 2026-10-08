@@ -272,6 +272,7 @@ let viteProxyWarning (serverUrl: string) (proxies: ViteProxy array) =
 
 let private viteProxyScript =
   """import { resolveConfig } from "vite";
+const proxyMarker = "@@smoothdev-web-proxy@@";
 const config = await resolveConfig({}, "serve");
 const proxy = (config.server && config.server.proxy) || {};
 const rows = [];
@@ -282,10 +283,23 @@ for (const [prefix, value] of Object.entries(proxy)) {
   else if (value && value.target) target = String(value.target);
   rows.push({ prefix, target });
 }
-process.stdout.write(JSON.stringify(rows));
+process.stdout.write("
+" + proxyMarker + JSON.stringify(rows) + "
+");
 """
 
-let private parseViteProxy (json: string) =
+let private proxyMarker = "@@smoothdev-web-proxy@@"
+
+/// The JSON after the marker line: plugins and Vite may print (colored) text to stdout before it.
+let private parseViteProxy (output: string) =
+  let start = output.LastIndexOf proxyMarker
+
+  let json =
+    if start < 0 then
+      output
+    else
+      output.Substring(start + proxyMarker.Length).Trim()
+
   use doc = JsonDocument.Parse json
   doc.RootElement.EnumerateArray()
   |> Seq.map (fun el ->
@@ -310,7 +324,7 @@ let readViteProxy (dir: string) (serverUrl: string) =
         (command "node" {
           args [ "--input-type=module" ]
           workingDirectory dir
-          env [ "SMOOTHDEV_WEB_SERVER_URL", serverUrl.TrimEnd '/' ]
+          env [ "SMOOTHDEV_WEB_SERVER_URL", serverUrl.TrimEnd '/'; "NO_COLOR", "1"; "FORCE_COLOR", "0" ]
           stdin (PipeSource.FromString viteProxyScript)
           validation CommandResultValidation.None
           buffered Encoding.UTF8 cts.Token
@@ -442,7 +456,7 @@ let scanLive root (rows: Config.ScanRow array) =
 
 let scanRunning path (live: ScanLive array) =
   live
-  |> Array.filter (fun e -> e.path = path || e.path.StartsWith(path + "/"))
+  |> Array.filter (fun e -> e.path = path || e.path.StartsWith(path + "/") || e.path.StartsWith(path + "\\"))
   |> Array.map _.path
   |> Array.distinct
   |> Array.length
@@ -450,7 +464,7 @@ let scanRunning path (live: ScanLive array) =
 let reapOwned (cfg: Config) =
   State.read cfg.root
   |> Array.filter (fun e -> e.owner = Environment.ProcessId && e.pid <> Environment.ProcessId)
-  |> Array.iter (fun e -> Posix.reap e.pid |> ignore)
+  |> Array.iter (fun e -> ProcessManagement.reap e.pid |> ignore)
 
 /// Stops what this smoothdev-web process started (the TUI and GUI do this when they exit).
 let stopOwned ctx =

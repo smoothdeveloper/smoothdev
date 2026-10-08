@@ -287,8 +287,8 @@ let main argv =
     | [ "scan"; "tui" ] -> Tui.scan dir
     | [ "scan"; "gui" ] -> Gui.scan dir None
     | [ "scan"; "gui"; "--port"; port ] -> Gui.scan dir (Some(int port))
-    | _ when not (OperatingSystem.IsMacOS() || OperatingSystem.IsLinux()) ->
-      say Fail "smoothdev-web runs on macOS and Linux for now (process groups are POSIX)"
+    | _ when not (OperatingSystem.IsMacOS() || OperatingSystem.IsLinux() || OperatingSystem.IsWindows()) ->
+      say Fail "smoothdev-web runs on macOS, Linux and Windows"
       1
     | _ ->
       match Config.load dir with
