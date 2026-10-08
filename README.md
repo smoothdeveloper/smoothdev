@@ -5,7 +5,7 @@ Tooling for smooth development: small, sharp tools that take the friction out of
 
 | tool | what it is |
 |---|---|
-| [`tools/smoothdev.web`](tools/smoothdev.web/README.md) | `smoothdev-web`: run a Vite + Fable + .NET web app in dev and prod from one place (free ports, process groups, logs, static bundle, TUI and web GUI) |
+| [`tools/smoothdev-web`](tools/smoothdev-web/README.md) | `smoothdev-web`: run a Vite + Fable + .NET web app in dev and prod from one place (free ports, process groups, logs, static bundle, TUI and web GUI) |
 
 Requirements: the .NET SDK pinned in `global.json`; `dotnet tool restore` brings paket.
 

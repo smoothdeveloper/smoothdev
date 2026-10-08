@@ -35,7 +35,7 @@ behind after Ctrl+C. smoothdev.web is that wiring done once:
 smoothdev.web is a .NET tool (needs the .NET 10 SDK; runs on macOS and Linux).
 
 ```sh
-# from a clone of this repository, in tools/smoothdev.web
+# from a clone of this repository, in tools/smoothdev-web
 dotnet fsi build.fsx -- install
 smoothdev-web --help
 ```
@@ -223,9 +223,8 @@ What each process receives:
 | `--no-launch-profile` (launchSettings.json would override the URL) | ✓ | | |
 | `SMOOTHDEV_WEB_VITE_PORT`, `--port <p> --strictPort --host 127.0.0.1` | | | ✓ |
 
-So a server only has to honour `ASPNETCORE_URLS` (ASP.NET Core, Giraffe and Saturn do by default; a
-`UseUrls`/`Kestrel` call with a fixed port would defeat it), and a Vite config that proxies API calls
-reads its target from the environment:
+A server honours `ASPNETCORE_URLS`. ASP.NET Core, Giraffe and Saturn do that unless the program
+replaces the URL. A Vite config that proxies API calls reads its target from the environment:
 
 ```js
 // vite.config.js
@@ -242,6 +241,12 @@ export default defineConfig({
 
 Vite gets `--strictPort` because the port was already checked: if something grabs it in between, Vite
 fails loudly instead of silently moving to a port the tool does not know.
+
+<a id="server-url"></a>
+
+### The server must use the URL it was given
+
+[ASP.NET server](https://smoothdeveloper.github.io/tools/smoothdev-web/server-url/#server-url) is the page for this. An ASP.NET server listens on the URL in `ASPNETCORE_URLS`.
 
 ## Making an app smoothdev.web-enabled
 

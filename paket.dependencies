@@ -7,9 +7,10 @@ framework: net10.0
 
 nuget FSharp.Core
 
-// tools/smoothdev.web
+// tools/smoothdev-web
 nuget Spectre.Console
 nuget UnMango.CliWrap.FSharp
+nuget Partas.TypeProvider.BuildHelper
 
 // tests
 nuget Expecto
