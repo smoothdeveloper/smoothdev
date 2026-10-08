@@ -50,6 +50,8 @@ NUGET
       FSharp.Core (>= 10.1.300)
       Nacara.Core (>= 2.0.0-beta.6)
     NUglify (1.23.4)
+    Partas.TypeProvider.BuildHelper (0.2.5)
+      FSharp.Core (>= 10.1.400)
     Spectre.Console (0.57.2)
       Spectre.Console.Ansi (>= 0.57.2)
     Spectre.Console.Ansi (0.57.2)
