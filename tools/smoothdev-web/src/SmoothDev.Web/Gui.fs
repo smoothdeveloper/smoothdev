@@ -56,6 +56,180 @@ let logStick =
 })();
 </script>"""
 
+/// Reloads the page, but not while the pointer is down. The window stays where it was. A selection
+/// anywhere on the page is found again by its text and the characters beside it, so a ticking clock
+/// or a new log line does not move it.
+let keepSelection =
+  """<script>
+(function () {
+  var url = document.body.getAttribute("data-refresh");
+  var log = document.querySelector("pre.log");
+  var key = "smoothdev-sel";
+  var down = false;
+  if (history.scrollRestoration) history.scrollRestoration = "manual";
+  var at = function (root, node, offset) {
+    if (!node) return 0;
+    if (node.nodeType !== 3) {
+      if (!node.childNodes.length) return 0;
+      if (offset >= node.childNodes.length) {
+        var last = node.childNodes[node.childNodes.length - 1];
+        return at(root, last, last.nodeType === 3 ? last.textContent.length : last.childNodes.length);
+      }
+      return at(root, node.childNodes[offset], 0);
+    }
+    var walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    var total = 0;
+    var current = walker.nextNode();
+    while (current) {
+      if (current === node) return total + offset;
+      total += current.textContent.length;
+      current = walker.nextNode();
+    }
+    return total;
+  };
+  var textOf = function (root) {
+    var walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    var parts = [];
+    var node = walker.nextNode();
+    while (node) {
+      parts.push(node.textContent);
+      node = walker.nextNode();
+    }
+    return parts.join("");
+  };
+  var point = function (root, index) {
+    if (index < 0) return null;
+    var walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    var left = index;
+    var node = walker.nextNode();
+    while (node) {
+      var n = node.textContent.length;
+      if (left <= n) return { node: node, offset: left };
+      left -= n;
+      node = walker.nextNode();
+    }
+    return null;
+  };
+  var save = function () {
+    var sel = window.getSelection();
+    var anchor = sel && sel.anchorNode;
+    if (!sel || sel.rangeCount === 0 || !anchor || (anchor !== document.body && !document.body.contains(anchor)))
+      sessionStorage.removeItem(key);
+    else {
+      var range = sel.getRangeAt(0);
+      var text = textOf(document.body);
+      var start = at(document.body, range.startContainer, range.startOffset);
+      var end = at(document.body, range.endContainer, range.endOffset);
+      if (end < start) { var swap = start; start = end; end = swap; }
+      sessionStorage.setItem(key, JSON.stringify({
+        before: text.slice(Math.max(0, start - 32), start),
+        selected: text.slice(start, end),
+        after: text.slice(end, end + 32)
+      }));
+    }
+    sessionStorage.setItem("smoothdev-win-x", String(window.scrollX));
+    sessionStorage.setItem("smoothdev-win-y", String(window.scrollY));
+  };
+  var restore = function () {
+    var raw = sessionStorage.getItem(key);
+    if (!raw) return;
+    var saved;
+    try { saved = JSON.parse(raw); } catch (e) { return; }
+    var text = textOf(document.body);
+    var needle = (saved.before || "") + (saved.selected || "") + (saved.after || "");
+    var found = needle === "" ? -1 : text.indexOf(needle);
+    if (found < 0 && saved.selected) {
+      found = text.indexOf(saved.selected);
+      if (found >= 0 && text.indexOf(saved.selected, found + 1) >= 0) return;
+      saved.before = "";
+    }
+    if (found < 0) return;
+    var start = found + (saved.before || "").length;
+    var end = start + (saved.selected || "").length;
+    var a = point(document.body, start);
+    var b = point(document.body, end);
+    if (!a || !b) return;
+    var range = document.createRange();
+    range.setStart(a.node, a.offset);
+    range.setEnd(b.node, b.offset);
+    var logTop = log ? log.scrollTop : 0;
+    var sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+    if (log) log.scrollTop = logTop;
+  };
+  var winX = sessionStorage.getItem("smoothdev-win-x");
+  var winY = sessionStorage.getItem("smoothdev-win-y");
+  restore();
+  if (winY !== null) window.scrollTo(Number(winX) || 0, Number(winY) || 0);
+  window.addEventListener("pointerdown", function () { down = true; });
+  window.addEventListener("pointerup", function () { down = false; save(); });
+  window.addEventListener("pointercancel", function () { down = false; });
+  if (!url) return;
+  setInterval(function () {
+    if (down) return;
+    save();
+    location.replace(url);
+  }, 2000);
+})();
+</script>"""
+
+/// A path the page shows, with a button that copies the exact text. The page refreshes
+/// often enough that a mouse selection does not survive.
+let copyButton (text: string) =
+  $"""<button type="button" class="copy" data-copy="{html text}" title="copy" aria-label="copy"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M5 2h2V1h2v1h2a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1zm0 1v9h6V3H5zm1-1h4v1H6V2z"/></svg></button><span class="copied" hidden>copied to clipboard</span>"""
+
+let pathLine (text: string) =
+  $"""<span class="path">{html text} {copyButton text}</span>"""
+
+let copyScript =
+  """<script>
+(function () {
+  var key = "smoothdev-copied";
+  var show = function (b) {
+    var note = b.nextElementSibling;
+    if (note) note.hidden = false;
+  };
+  var saved = sessionStorage.getItem(key);
+  if (saved) {
+    var cut = saved.lastIndexOf("\n");
+    var text = saved.slice(0, cut);
+    var at = Number(saved.slice(cut + 1));
+    if (Date.now() - at < 4000) {
+      document.querySelectorAll("button.copy").forEach(function (b) {
+        if (b.getAttribute("data-copy") === text) show(b);
+      });
+    }
+  }
+  var write = function (text) {
+    var area = document.createElement("textarea");
+    area.value = text;
+    area.setAttribute("readonly", "");
+    area.style.position = "fixed";
+    area.style.left = "-9999px";
+    document.body.appendChild(area);
+    area.select();
+    var ok = false;
+    try { ok = document.execCommand("copy"); } catch (e) { ok = false; }
+    area.remove();
+    if (ok) return Promise.resolve();
+    if (navigator.clipboard && navigator.clipboard.writeText)
+      return navigator.clipboard.writeText(text);
+    return Promise.reject();
+  };
+  document.addEventListener("click", function (ev) {
+    var b = ev.target.closest && ev.target.closest("button.copy");
+    if (!b) return;
+    ev.preventDefault();
+    var text = b.getAttribute("data-copy");
+    write(text).then(function () {
+      sessionStorage.setItem(key, text + "\n" + Date.now());
+      show(b);
+    });
+  });
+})();
+</script>"""
+
 /// Opens the server in its own tab. The same address focuses that tab again.
 let externalLink (url: string) =
   let name =
@@ -138,10 +312,12 @@ let page (cfg: Config) (rows: Row array) (selected: string option) (messages: st
       $"""<a{cls} href="{href}">{r.name}</a>""")
     |> String.concat " "
 
-  let log =
+  let log, logPath =
     match shown |> Option.bind _.entry with
-    | Some e -> Runner.tailRaw e.log 60 |> Array.map Runner.ansiHtml |> String.concat "\n"
-    | None -> "no component running"
+    | Some e when e.log <> "" ->
+      Runner.tailRaw e.log 60 |> Array.map Runner.ansiHtml |> String.concat "\n",
+      $"""<div class="src">{pathLine e.log}</div>"""
+    | _ -> "no component running", ""
 
   let busyHtml =
     if busy = "" then
@@ -163,7 +339,6 @@ let page (cfg: Config) (rows: Row array) (selected: string option) (messages: st
 
   $"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
-<meta http-equiv="refresh" content="2; url={refresh}">
 <title>smoothdev-web: {html cfg.name}</title>
 <style>
   body {{ font: 14px/1.4 ui-sans-serif, system-ui, sans-serif; margin: 1.5rem; color: #1d2330; background: #f6f7f9; }}
@@ -176,19 +351,26 @@ let page (cfg: Config) (rows: Row array) (selected: string option) (messages: st
   .bar {{ margin: 1rem 0; }} .busy {{ color: #b45309; margin-left: 1rem; }}
   pre.log {{ background: #11151c; color: #d1d5db; padding: .8rem; max-height: 26rem; overflow: auto; font-size: 12px; white-space: pre-wrap; }}
   .tabs a {{ margin-right: .6rem; }} .tabs a.on {{ font-weight: 700; }} ul {{ color: #374151; padding-left: 0; list-style: none; }}
+  button.copy {{ border: 0; background: transparent; padding: 0 .15rem; cursor: pointer; vertical-align: middle; color: #6b7280; }}
+  button.copy:hover {{ color: #1d2330; }}
+  .copied {{ color: #15803d; margin-left: .25rem; font-size: 12px; }}
+  .path {{ font-family: ui-monospace, monospace; font-size: 12px; }}
   li.error {{ background: #fef2f2; border-left: 3px solid #dc2626; padding: .35rem .6rem; margin: .4rem 0; }}
   li.error a {{ color: #b91c1c; }}
-</style></head><body>
+</style></head><body data-refresh="{html refresh}">
 <h1>smoothdev-web: {html cfg.name}</h1>
 {back}
-<div class="src">{html cfg.root}, {html (cfg.file |> Option.map Config.nameOf |> Option.defaultValue "detected config")}</div>
+<div class="src">{pathLine cfg.root}, {html (cfg.file |> Option.map Config.nameOf |> Option.defaultValue "detected config")}</div>
 <table><tr><th>component</th><th>state</th><th>pid</th><th>port</th><th>url</th><th>up</th><th>role</th><th></th></tr>
 {rows |> Array.map rowHtml |> String.concat "\n"}
 </table>
 <div class="bar">{button here ActionTarget.Dist "build dist"}{button here ActionTarget.Build "compile"}{button here ActionTarget.Open "open best"}{button here ActionTarget.Stop "stop all"}{busyHtml}</div>
 <div class="tabs">log: {tabs}</div>
+{logPath}
 <pre class="log">{log}</pre>
 {logStick}
+{keepSelection}
+{copyScript}
 <ul>{messages |> Array.map messageItem |> String.concat ""}</ul>
 </body></html>
 """
@@ -376,17 +558,15 @@ let run (cfg: Config) (preferredPort: int option) (browser: bool) =
   0
 
 /// `scan gui`: cached hits show at once. The walk refreshes them. A folder link folds that group.
-let scan (root: string) (preferredPort: int option) =
+let scan root preferredPort =
   let view = Config.ScanView()
-  let covered = ref ""
+  let seeded = ref false
   let finished = ref false
 
   match Config.scanFromCache root with
-  | Some(rows, true, cachedRoot) ->
+  | Some(rows, _, _) ->
     view.Load rows
-    covered.Value <- cachedRoot
-    finished.Value <- true
-  | Some(rows, false, _) -> view.Load rows
+    seeded.Value <- true
   | None -> ()
 
   let opened = Collections.Generic.HashSet<string>()
@@ -395,8 +575,7 @@ let scan (root: string) (preferredPort: int option) =
   let current = ref root
   use stopping = new CancellationTokenSource()
 
-  if covered.Value = "" then
-    Task.Run(fun () ->
+  Task.Run(fun () ->
       let n =
         Config.scanVisit
           root
@@ -429,16 +608,15 @@ let scan (root: string) (preferredPort: int option) =
   use _term = PosixSignalRegistration.Create(PosixSignal.SIGTERM, stop)
 
   let treePage (selected: string) =
-    let lines = Config.scanLines (view.Rows()) (Seq.toArray opened) (Seq.toArray closed)
-    let live = Actions.scanLive root (view.Rows())
+    let rows = view.Rows()
+    let lines = Config.scanLines rows (Seq.toArray opened) (Seq.toArray closed)
+    let live = Actions.scanLive root rows
     let logs = live |> Array.filter (fun e -> e.log <> "")
 
     let progress =
-      if covered.Value <> "" then
-        $"cached, {view.Rows().Length} apps from {covered.Value}, {live.Length} running"
-      elif finished.Value then
+      if finished.Value then
         $"done, {visited.Value} folders, {view.Rows().Length} apps, {live.Length} running"
-      elif view.Rows().Length > 0 && visited.Value = 0 then
+      elif seeded.Value && visited.Value = 0 then
         "cached, refreshing"
       else
         $"scanning, {visited.Value} folders, {view.Rows().Length} apps, {current.Value}"
@@ -488,17 +666,18 @@ let scan (root: string) (preferredPort: int option) =
         $"""<a{cls} href="/?log={Uri.EscapeDataString key}">{html e.app} / {html e.name}</a>""")
       |> String.concat " "
 
-    let log =
+    let log, logPath =
       match shown with
-      | Some e -> Runner.tailRaw e.log 80 |> Array.map Runner.ansiHtml |> String.concat "\n"
-      | None -> "nothing running"
+      | Some e when e.log <> "" ->
+        Runner.tailRaw e.log 80 |> Array.map Runner.ansiHtml |> String.concat "\n",
+        $"""<p class="src">{pathLine e.log}</p>"""
+      | _ -> "nothing running", ""
 
     let refresh = if selected = "" then "/" else $"/?log={Uri.EscapeDataString selected}"
 
     let doc =
       """<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
-<meta http-equiv="refresh" content="2; url=__REFRESH__">
 <title>smoothdev-web scan</title>
 <style>
   body { font: 14px/1.4 ui-sans-serif, system-ui, sans-serif; margin: 1.5rem; background: #f6f7f9; color: #1d2330; }
@@ -513,34 +692,34 @@ let scan (root: string) (preferredPort: int option) =
   tr.idle td { color: #64748b; }
   tr.run td { color: #15803d; font-weight: 600; }
   .tabs a { margin-right: .8rem; color: #374151; } .tabs a.on { font-weight: 700; }
+  .src { color: #6b7280; }
+  button.copy { border: 0; background: transparent; padding: 0 .15rem; cursor: pointer; vertical-align: middle; color: #6b7280; }
+  .copied { color: #15803d; margin-left: .25rem; font-size: 12px; }
+  .path { font-family: ui-monospace, monospace; font-size: 12px; }
   pre { background: #11151c; color: #d1d5db; padding: .8rem; max-height: 18rem; overflow: auto; font-size: 12px; white-space: pre-wrap; }
-</style></head><body>
+</style></head><body data-refresh="__REFRESH__">
 <h1>smoothdev-web scan</h1>
-<p>__ROOT__</p>
+<p class="src">__ROOT__</p>
 <p class="progress">__PROGRESS__</p>
 <table><tr><th>kind</th><th>path</th><th>note</th></tr>
 __BODY__
 </table>
 <div class="tabs">logs: __TABS__</div>
+__LOGPATH__
 <pre class="log">__LOG__</pre>
-<script>
-const key = "smoothdev-scan-scroll";
-const saved = sessionStorage.getItem(key);
-if (saved) window.scrollTo(0, Number(saved));
-const keep = () => sessionStorage.setItem(key, String(window.scrollY));
-addEventListener("click", keep);
-setInterval(keep, 300);
-</script>
 </body></html>"""
 
     doc
       .Replace("__REFRESH__" , refresh)
-      .Replace("__ROOT__"    , html root)
+      .Replace("__ROOT__"    , pathLine root)
       .Replace("__PROGRESS__", html progress)
       .Replace("__BODY__"    , body)
       .Replace("__TABS__"    , tabs)
+      .Replace("__LOGPATH__", logPath)
       .Replace("__LOG__"     , log)
     + logStick
+    + keepSelection
+    + copyScript
 
   let messages = ConcurrentQueue<string>()
   let busy = ref ""

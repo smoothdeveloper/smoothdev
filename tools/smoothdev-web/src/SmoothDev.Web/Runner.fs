@@ -36,6 +36,8 @@ let environment (extra: (string * string) array) =
       "FORCE_COLOR", "1"
       "CLICOLOR_FORCE", "1"
       "DOTNET_SYSTEM_CONSOLE_ALLOW_ANSI_COLOR_REDIRECTION", "1"
+      // the classic logger prints a line and flushes; the terminal logger redraws in place
+      "MSBUILDTERMINALLOGGER", "off"
     |] do
     vars[k] <- v
 
@@ -395,12 +397,17 @@ let ansiHtml (line: string) =
 
       i <- min line.Length (j + 1)
     else
+      // An escape that is not a colour sequence (Fable prints cursor moves) must still
+      // advance, or this loop stays on that character.
       let start = i
+      if line[i] = '\u001b' then
+        i <- i + 1
 
       while i < line.Length && line[i] <> '\u001b' do
         i <- i + 1
 
-      emit (line.Substring(start, i - start))
+      if start < i && line[start] <> '\u001b' then
+        emit (line.Substring(start, i - start))
 
   sb.ToString()
 
