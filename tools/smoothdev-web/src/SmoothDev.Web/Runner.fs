@@ -251,6 +251,8 @@ let plain (line: string) = ansi.Replace(line, "").TrimEnd('\r')
 
 let serverUrlDoc = DocLink.url
 
+let viteProxyDoc = DocLink.viteUrl
+
 let private urlWithPort =
   Text.RegularExpressions.Regex(@"https?://(?:\[[^\]]+\]|[^/\s:]+):(\d+)", Text.RegularExpressions.RegexOptions.IgnoreCase)
 

@@ -3,6 +3,8 @@ module SmoothDev.Web.Actions
 
 open System
 open System.IO
+open System.Text
+open System.Text.Json
 open System.Threading
 open System.Threading.Tasks
 open CliWrap
@@ -236,6 +238,104 @@ let startServerDev ctx (s: Server) =
 let startFable ctx (c: Client) project outDir extension =
   Runner.startComponent ctx.config.root Component.Fable (fableArgv true project outDir extension) [| "DOTNET_NOLOGO", "1" |] c.dir 0 ""
 
+/// One `server.proxy` entry after Vite has loaded the config. `rewrite` is a function, so only the prefix and target are kept.
+type ViteProxy = { prefix: string; target: string }
+
+let private loopback (host: string) =
+  host = "localhost" || host = "127.0.0.1" || host = "::1"
+
+/// True when the proxy target is the server this tool started. `localhost` and `127.0.0.1` are the same host.
+let private tryUri (text: string) =
+  try Some (Uri text) with _ -> None
+
+let proxyTargetsServer (serverUrl: string) (target: string) =
+  match tryUri serverUrl, tryUri target with
+  | Some server, Some proxy ->
+    server.Port = proxy.Port && (server.Host = proxy.Host || (loopback server.Host && loopback proxy.Host))
+  | _ -> false
+
+/// A warning when Vite will not forward to the dev server. None when some prefix already does.
+let viteProxyWarning (serverUrl: string) (proxies: ViteProxy array) =
+  let serverUrl = serverUrl.TrimEnd '/'
+  if proxies |> Array.exists (fun p -> proxyTargetsServer serverUrl p.target) then
+    None
+  elif proxies.Length = 0 then
+    Some $"Vite has no server.proxy, so the page will not reach the dev server at {serverUrl}. {Runner.viteProxyDoc}"
+  else
+    let listed =
+      proxies
+      |> Array.map (fun p ->
+        let target = if p.target = "" then "(no fixed target)" else p.target
+        $"{p.prefix} -> {target}")
+      |> String.concat ", "
+    Some $"Vite proxies {listed}. None of those is the dev server at {serverUrl}. {Runner.viteProxyDoc}"
+
+let private viteProxyScript =
+  """import { resolveConfig } from "vite";
+const config = await resolveConfig({}, "serve");
+const proxy = (config.server && config.server.proxy) || {};
+const rows = [];
+for (const [prefix, value] of Object.entries(proxy)) {
+  let target = "";
+  if (typeof value === "string") target = value;
+  else if (value && typeof value.target === "string") target = value.target;
+  else if (value && value.target) target = String(value.target);
+  rows.push({ prefix, target });
+}
+process.stdout.write(JSON.stringify(rows));
+"""
+
+let private parseViteProxy (json: string) =
+  use doc = JsonDocument.Parse json
+  doc.RootElement.EnumerateArray()
+  |> Seq.map (fun el ->
+    let text (name: string) =
+      let mutable value = JsonElement()
+      if el.TryGetProperty(name, &value) && value.ValueKind = JsonValueKind.String then
+        match value.GetString() with
+        | null -> ""
+        | s -> s
+      else
+        ""
+    { prefix = text "prefix"; target = text "target" })
+  |> Seq.toArray
+
+/// Loads `server.proxy` the way Vite does, from the client directory, with the server URL in the environment.
+let readViteProxy (dir: string) (serverUrl: string) =
+  task {
+    use cts = new CancellationTokenSource(TimeSpan.FromSeconds 20.)
+
+    try
+      let! result =
+        (command "node" {
+          args [ "--input-type=module" ]
+          workingDirectory dir
+          env [ "SMOOTHDEV_WEB_SERVER_URL", serverUrl.TrimEnd '/' ]
+          stdin (PipeSource.FromString viteProxyScript)
+          validation CommandResultValidation.None
+          buffered Encoding.UTF8 cts.Token
+        })
+
+      if result.ExitCode <> 0 then
+        let detail =
+          if String.IsNullOrWhiteSpace result.StandardError then result.StandardOutput else result.StandardError
+
+        let detail = detail.Trim().Replace("\n", " ")
+        let detail = if detail.Length > 240 then detail.Substring(0, 240) else detail
+        return Error $"could not read Vite's proxy config ({detail})"
+      else
+        let parsed =
+          try
+            Ok(parseViteProxy result.StandardOutput)
+          with e ->
+            Error $"could not read Vite's proxy config ({e.Message})"
+
+        return parsed
+    with
+    | :? OperationCanceledException -> return Error "could not read Vite's proxy config (timed out)"
+    | e -> return Error $"could not read Vite's proxy config ({e.Message})"
+  }
+
 let startVite ctx (c: Client) (server: Entry option) =
   let port = pickPort ctx "Vite" c.port
 
@@ -427,6 +527,17 @@ let devStart ctx =
               let vite = startVite ctx c server |> orFail |> keep
               let! viteReady = Runner.waitReady vite (TimeSpan.FromMinutes 2.)
               orFail viteReady
+
+              match server with
+              | Some s ->
+                let! proxy = readViteProxy c.dir s.url
+                match proxy with
+                | Error msg -> ctx.say Warn msg
+                | Ok rows ->
+                  match viteProxyWarning s.url rows with
+                  | Some text -> ctx.say Warn text
+                  | None -> ()
+              | None -> ()
             | None -> ()
 
             match server with
@@ -757,6 +868,34 @@ let stops action =
   | ActionTarget.PreviewStop -> names [| Component.Preview |]
   | ActionTarget.Stop        -> names (Component.all |> Array.filter ((<>) Component.Gui))
   | _                        -> [||]
+
+/// Stop all on the GUI: the other components in the same order `stopNames` uses
+/// (last in `stops` first), then the GUI process itself.
+let stopAllOrder =
+  let apps = stops ActionTarget.Stop
+
+  apps
+  |> Array.sortByDescending (fun name -> Array.IndexOf(apps, name))
+  |> Array.append <| [| Component.Gui.name |]
+
+/// Stops the named components that are running, in the order given.
+let stopInOrder ctx (names: string array) =
+  task {
+    let live = State.live ctx.config.root
+
+    for name in names do
+      match live |> Array.tryFind (fun e -> e.name = name) with
+      | None -> ()
+      | Some e ->
+        let! forced = Runner.stop ctx.config.root e (TimeSpan.FromSeconds 8.)
+
+        if forced then
+          ctx.say Warn $"stopped {e.name} (pid {e.pid}): killed after it ignored SIGTERM"
+        else
+          ctx.say Info $"stopped {e.name} (pid {e.pid})"
+
+    return Ok ()
+  }
 
 /// The actions the TUI and the GUI offer.
 let perform ctx (action: ActionTarget) : Task<Result<unit, string>> =

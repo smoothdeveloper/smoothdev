@@ -345,6 +345,19 @@ garbage line
         Expect.isFalse (Runner.groupRunning snapshot 200) "group of only a zombie"
       }
 
+      test "ps listing: a zombie-only group is not a live member" {
+        let listing =
+          """  100 Z
+  101 S
+  200 Z+
+"""
+
+        Expect.isFalse (Posix.liveInGroup listing 100) "zombie leader"
+        Expect.isTrue  (Posix.liveInGroup listing 101) "sleeping member"
+        Expect.isFalse (Posix.liveInGroup listing 200) "zombie only"
+        Expect.isFalse (Posix.liveInGroup listing 999) "absent"
+      }
+
       test "start records a process group; stop ends every member and clears the state" {
         use dir = new TempDir()
         // a shell with a child and a grandchild, all in the new group
@@ -473,14 +486,40 @@ garbage line
         Expect.contains keys "VSLANG" "MSBuild messages follow en-US"
       }
 
-      test "the documentation link is the server-url page next to this tool" {
-        Expect.equal
-          DocLink.url
-          "https://smoothdeveloper.github.io/smoothdev/tools/smoothdev-web/server-url/#server-url"
-          "route follows the repo path under the published site root"
-        Expect.isTrue DocLink.page.Exists "the page is in the repository"
-        let text = File.ReadAllText DocLink.page.FullName
-        Expect.stringContains text "id=\"server-url\"" "the fragment on the link is in the page"
+      // url, page file, fragment id
+      let documentationPages = [
+        DocLink.url    , DocLink.page    , "server-url"
+        DocLink.viteUrl, DocLink.vitePage, "vite-proxy"
+      ]
+
+      for url, page, fragment in documentationPages do
+        test $"the documentation link is the {fragment} page next to this tool" {
+          Expect.equal
+            url
+            $"https://smoothdeveloper.github.io/smoothdev/tools/smoothdev-web/{fragment}/#{fragment}"
+            "route follows the repo path under the published site root"
+          Expect.isTrue page.Exists "the page is in the repository"
+          let text = File.ReadAllText page.FullName
+          Expect.stringContains text $"id=\"{fragment}\"" "the fragment on the link is in the page"
+        }
+
+      test "vite proxy warning names the prefixes that miss the dev server" {
+        let server = "http://127.0.0.1:5002"
+        Expect.isNone (Actions.viteProxyWarning server [| { prefix = "/api"; target = "http://localhost:5002" } |]) "localhost is the same server"
+        let missing = Actions.viteProxyWarning server [||]
+        Expect.isSome missing "no proxy"
+        Expect.stringContains (Option.get missing) "no server.proxy" "says the config has none"
+        Expect.stringContains (Option.get missing) DocLink.viteUrl "links the vite-proxy page"
+        let others =
+          Actions.viteProxyWarning server [|
+            { prefix = "/api1"; target = "http://0.0.0.0:8080" }
+            { prefix = "/api2"; target = "http://0.0.0.0:5000" }
+          |]
+        Expect.stringContains (Option.get others) "/api1 -> http://0.0.0.0:8080" "lists the first prefix"
+        Expect.stringContains (Option.get others) "/api2 -> http://0.0.0.0:5000" "lists the other prefix"
+        Expect.stringContains (Option.get others) server "names the dev server"
+        Expect.stringContains (Option.get others) DocLink.viteUrl "links the vite-proxy page"
+        Expect.isFalse ((Option.get others).Contains DocLink.url) "the ASP.NET page is the wrong-port case"
       }
 
       test "a listen line on another port is reported, a build log url is not" {
@@ -518,7 +557,64 @@ let staticServer =
       }
     ]
 
-let tests = testList "smoothdev.web" [ ports; config; tracking; staticServer ]
+let guiPage =
+  testList
+    "gui page"
+    [
+      test "the main page hides the gui row and Stop all ends the gui last" {
+        let entry name url : Entry =
+          { name = name
+            pid = 1
+            pgid = 0
+            port = 1
+            url = url
+            log = ""
+            command = [||]
+            startedAt = DateTimeOffset.Now
+            owner = 0 }
+
+        let row name url : Row =
+          { name = name
+            role = name
+            state = Running
+            entry = Some(entry name url) }
+
+        let cfg: Config =
+          { name = "demo"
+            root = "."
+            file = None
+            packageManager = Npm
+            client = None
+            server = None
+            previewPort = 4000
+            guiPort = 5050 }
+
+        let html =
+          Gui.page
+            cfg
+            [| row "server" "http://127.0.0.1:5000/"
+               row "gui" "http://127.0.0.1:5050/"
+               row "vite" "http://127.0.0.1:5173/" |]
+            None
+            [||]
+            ""
+            "/"
+
+        Expect.stringContains html ">server<" "server row stays"
+        Expect.stringContains html "http://127.0.0.1:5173/" "vite url stays"
+        Expect.isFalse (html.Contains ">gui<") "no gui row"
+        Expect.isFalse (html.Contains "http://127.0.0.1:5050/") "no link to this page"
+        Expect.stringContains html ">Stop all<" "stop all button"
+
+        Expect.equal
+          Actions.stopAllOrder
+          [| "preview"; "prod"; "vite"; "fable"; "server"; "gui" |]
+          "apps first, in the same order stop uses, then the gui"
+        Expect.equal (Array.last Actions.stopAllOrder) "gui" "the gui is last"
+      }
+    ]
+
+let tests = testList "smoothdev.web" [ ports; config; tracking; staticServer; guiPage ]
 
 [<EntryPoint>]
 let main argv = runTestsWithCLIArgs [] argv tests

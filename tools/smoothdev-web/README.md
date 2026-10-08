@@ -248,6 +248,12 @@ fails loudly instead of silently moving to a port the tool does not know.
 
 [ASP.NET server](https://smoothdeveloper.github.io/smoothdev/tools/smoothdev-web/server-url/#server-url) is the page for this. An ASP.NET server listens on the URL in `ASPNETCORE_URLS`.
 
+<a id="vite-proxy"></a>
+
+### The Vite proxy must target the URL it was given
+
+[Vite proxy](https://smoothdeveloper.github.io/smoothdev/tools/smoothdev-web/vite-proxy/#vite-proxy) is the page for this. At least one `server.proxy` prefix targets `SMOOTHDEV_WEB_SERVER_URL`. A fixed `localhost:5000` misses the port the tool picked.
+
 ## Making an app smoothdev.web-enabled
 
 1. Vite app with a `package.json` and a lockfile; Fable either through `vite-plugin-fable` or through

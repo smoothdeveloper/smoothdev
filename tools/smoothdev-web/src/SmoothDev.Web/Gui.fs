@@ -26,6 +26,7 @@ let linkify (encoded: string) =
 let messageItem (m: string) =
   let kind, text =
     if m.StartsWith "fail\t" then "error", m.Substring 5
+    elif m.StartsWith "warn\t" then "warn", m.Substring 5
     else "", m
   let cls = if kind = "" then "" else $" class=\"{kind}\""
   $"<li{cls}>{linkify (html text)}</li>"
@@ -67,6 +68,16 @@ let keepSelection =
   var key = "smoothdev-sel";
   var down = false;
   if (history.scrollRestoration) history.scrollRestoration = "manual";
+  var xKey = "smoothdev-win-x";
+  var yKey = "smoothdev-win-y";
+  var ignoreScroll = 0;
+  var place = function () {
+    var y = sessionStorage.getItem(yKey);
+    if (y === null) return;
+    ignoreScroll++;
+    window.scrollTo(Number(sessionStorage.getItem(xKey)) || 0, Number(y) || 0);
+    setTimeout(function () { ignoreScroll = Math.max(0, ignoreScroll - 1); }, 80);
+  };
   var at = function (root, node, offset) {
     if (!node) return 0;
     if (node.nodeType !== 3) {
@@ -127,8 +138,9 @@ let keepSelection =
         after: text.slice(end, end + 32)
       }));
     }
-    sessionStorage.setItem("smoothdev-win-x", String(window.scrollX));
-    sessionStorage.setItem("smoothdev-win-y", String(window.scrollY));
+    if (ignoreScroll) return;
+    sessionStorage.setItem(xKey, String(window.scrollX));
+    sessionStorage.setItem(yKey, String(window.scrollY));
   };
   var restore = function () {
     var raw = sessionStorage.getItem(key);
@@ -157,11 +169,12 @@ let keepSelection =
     sel.removeAllRanges();
     sel.addRange(range);
     if (log) log.scrollTop = logTop;
+    place();
   };
-  var winX = sessionStorage.getItem("smoothdev-win-x");
-  var winY = sessionStorage.getItem("smoothdev-win-y");
   restore();
-  if (winY !== null) window.scrollTo(Number(winX) || 0, Number(winY) || 0);
+  place();
+  requestAnimationFrame(function () { place(); requestAnimationFrame(place); });
+  window.addEventListener("scroll", save, { passive: true });
   window.addEventListener("pointerdown", function () { down = true; });
   window.addEventListener("pointerup", function () { down = false; save(); });
   window.addEventListener("pointercancel", function () { down = false; });
@@ -271,12 +284,18 @@ let controls (here: string) (r: Row) =
 
 let page (cfg: Config) (rows: Row array) (selected: string option) (messages: string array) (busy: string) (here: string) =
   let withLogs =
-    rows |> Array.filter (fun r -> r.entry |> Option.exists (fun e -> e.log <> ""))
+    rows
+    |> Array.filter (fun r -> Component.parse r.name <> Some Component.Gui)
+    |> Array.filter (fun r -> r.entry |> Option.exists (fun e -> e.log <> ""))
 
   let shown =
     selected
     |> Option.bind (fun n -> withLogs |> Array.tryFind (fun r -> r.name = n))
     |> Option.orElse (Array.tryHead withLogs)
+
+  // The GUI tracks itself so `stop` can tear it down. That row's URL is this page.
+  let visible =
+    rows |> Array.filter (fun r -> Component.parse r.name <> Some Component.Gui)
 
   let rowHtml (r: Row) =
     let cells =
@@ -357,14 +376,15 @@ let page (cfg: Config) (rows: Row array) (selected: string option) (messages: st
   .path {{ font-family: ui-monospace, monospace; font-size: 12px; }}
   li.error {{ background: #fef2f2; border-left: 3px solid #dc2626; padding: .35rem .6rem; margin: .4rem 0; }}
   li.error a {{ color: #b91c1c; }}
+  li.warn {{ background: #fffbeb; border-left: 3px solid #d97706; padding: .35rem .6rem; margin: .4rem 0; }}
 </style></head><body data-refresh="{html refresh}">
 <h1>smoothdev-web: {html cfg.name}</h1>
 {back}
 <div class="src">{pathLine cfg.root}, {html (cfg.file |> Option.map Config.nameOf |> Option.defaultValue "detected config")}</div>
 <table><tr><th>component</th><th>state</th><th>pid</th><th>port</th><th>url</th><th>up</th><th>role</th><th></th></tr>
-{rows |> Array.map rowHtml |> String.concat "\n"}
+{visible |> Array.map rowHtml |> String.concat "\n"}
 </table>
-<div class="bar">{button here ActionTarget.Dist "build dist"}{button here ActionTarget.Build "compile"}{button here ActionTarget.Open "open best"}{button here ActionTarget.Stop "stop all"}{busyHtml}</div>
+<div class="bar">{button here ActionTarget.Dist "build dist"}{button here ActionTarget.Build "compile"}{button here ActionTarget.Open "open best"}{button here ActionTarget.Stop "Stop all"}{busyHtml}</div>
 <div class="tabs">log: {tabs}</div>
 {logPath}
 <pre class="log">{log}</pre>
@@ -433,7 +453,11 @@ let run (cfg: Config) (preferredPort: int option) (browser: bool) =
   let messages = ConcurrentQueue<string>()
 
   let push level (line: string) =
-    let kind = if level = Fail then "fail\t" else ""
+    let kind =
+      match level with
+      | Fail -> "fail\t"
+      | Warn -> "warn\t"
+      | _ -> ""
     messages.Enqueue $"{kind}{DateTime.Now:``HH:mm:ss``} {line}"
 
     while messages.Count > 12 do
@@ -527,6 +551,15 @@ let run (cfg: Config) (preferredPort: int option) (browser: bool) =
         |> write c.Response 200 "text/html; charset=utf-8"
 
       | "GET", "/api/status" -> write c.Response 200 "application/json" (statusJson (Actions.rows cfg))
+      | "POST", "/action/stop" ->
+        // Apps first, in stopAllOrder. Stopping this process from inside Runner.stop would
+        // wait for itself, so the GUI exits the same way Ctrl+C does, after the apps are down.
+        let apps =
+          Actions.stopAllOrder |> Array.filter (fun n -> Component.parse n <> Some Component.Gui)
+
+        (Actions.stopInOrder ctx apps).GetAwaiter().GetResult() |> ignore
+        write c.Response 200 "text/html; charset=utf-8" "<!doctype html><html><body><p>stopped</p></body></html>"
+        stopping.Cancel()
       | "POST", p when p.StartsWith "/action/" ->
         dispatch busy push ctx (p.Substring "/action/".Length)
         c.Response.Redirect "/"
@@ -726,7 +759,11 @@ __LOGPATH__
   let managed = Collections.Generic.Dictionary<string, Config>()
 
   let push level line =
-    let kind = if level = Fail then "fail\t" else ""
+    let kind =
+      match level with
+      | Fail -> "fail\t"
+      | Warn -> "warn\t"
+      | _ -> ""
     messages.Enqueue $"{kind}{DateTime.Now:``HH:mm:ss``} {line}"
 
     while messages.Count > 12 do
