@@ -265,6 +265,17 @@ let otherListenUrls (logText: string) (port: int) =
       |> Seq.toArray)
   |> Array.distinct
 
+/// The dev server is no longer the process we started: it bound another port, or `dotnet watch`
+/// has parked after the app exited and is waiting for a file edit.
+let serverGaveUp (e: Entry) =
+  if e.name <> "server" || e.log = "" || not (File.Exists e.log) then
+    false
+  else
+    let text = readShared e.log 65536L
+
+    text.Contains("Waiting for a file to change before restarting", StringComparison.OrdinalIgnoreCase)
+    || (otherListenUrls text e.port).Length > 0
+
 /// Waits until the component answers HTTP on its URL; fails when it exits, the timeout passes,
 /// or the log shows it finished starting on a different port.
 let waitReady (e: Entry) (timeout: TimeSpan) =

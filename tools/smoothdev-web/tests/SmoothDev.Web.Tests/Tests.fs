@@ -205,6 +205,20 @@ let config =
         Expect.equal client.fable NoFable "no fsproj in the client dir"
       }
 
+      test "a vite folder and the server beside it are one app" {
+        use dir = new TempDir()
+        dir.write "web/package.json" """{ "name": "playlist", "devDependencies": { "vite": "8" } }""" |> ignore
+        dir.write "web/vite.config.mjs" "export default {}" |> ignore
+        let server = dir.write "server/App.fsproj" "<Project Sdk=\"Microsoft.NET.Sdk.Web\" />"
+        let web = Path.Combine(dir.path, "web")
+        let fromWeb = Config.load web |> ok
+        let fromServer = Config.load (Path.GetDirectoryName server |> nonNull) |> ok
+        Expect.equal fromWeb.root dir.path "opening the client uses the parent app"
+        Expect.equal (Option.get fromWeb.server).project server "the sibling server"
+        Expect.equal fromServer.root dir.path "opening the server uses the same app"
+        Expect.equal (Option.get fromServer.client).dir web "the sibling client"
+      }
+
       test "pnpm-lock.yaml beside a vite config needs no manifest" {
         use dir = new TempDir()
         dir.write "pnpm-lock.yaml" "" |> ignore
@@ -428,6 +442,30 @@ garbage line
         Expect.isTrue (has "DOTNET_SYSTEM_CONSOLE_ALLOW_ANSI_COLOR_REDIRECTION") "dotnet"
         Expect.isFalse (env |> Array.exists (fun e -> e.StartsWith "NO_COLOR=")) "no color off"
         Expect.isTrue (has "PORT") "extra kept"
+      }
+
+      test "a server that bound another port is stopped, so start is offered" {
+        use dir = new TempDir()
+        dir.write "server/App.fsproj" "<Project Sdk=\"Microsoft.NET.Sdk.Web\" />" |> ignore
+        let cfg = Config.load (Path.Combine(dir.path, "server")) |> ok
+        let log = dir.write ".smoothdev/web/logs/server.log" "listening http://127.0.0.1:8766\n"
+
+        State.add
+          cfg.root
+          { name = "server"
+            pid = Environment.ProcessId
+            pgid = 0
+            port = 5001
+            url = "http://127.0.0.1:5001/"
+            log = log
+            command = [||]
+            startedAt = DateTimeOffset.Now
+            owner = 0 }
+
+        let row = Actions.rows cfg |> Array.find (fun r -> r.name = "server")
+        Expect.equal row.state Stopped "the row is stopped while the log shows another port"
+        let parked = dir.write ".smoothdev/web/logs/server.log" "Waiting for a file to change before restarting ...\n"
+        Expect.isTrue (Runner.serverGaveUp { (State.read cfg.root)[0] with log = parked }) "watch parked after the app exited"
       }
 
       test "the documentation link is the server-url page next to this tool" {
