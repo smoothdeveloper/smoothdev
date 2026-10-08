@@ -1,20 +1,92 @@
-<!DOCTYPE html><html lang="en" dir="ltr"><head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /><title>Vite proxy · smoothdev</title><link rel="canonical" href="https://smoothdeveloper.github.io/smoothdev/tools/smoothdev-web/vite-proxy/" /><meta property="og:url" content="https://smoothdeveloper.github.io/smoothdev/tools/smoothdev-web/vite-proxy/" /><meta property="og:site_name" content="smoothdev" /><meta property="og:locale" content="en" /><meta name="twitter:card" content="summary_large_image" /><meta property="og:title" content="Vite proxy" /><meta property="og:type" content="article" /><link rel="stylesheet" href="/smoothdev/assets/css/nacara.f8963a80.css" /><script>(()=>{var o="nacara-theme",s=matchMedia("(prefers-color-scheme: dark)"),a=()=>{try{return localStorage.getItem(o)||"system"}catch{return"system"}},c=e=>{let t=document.documentElement;t.dataset.themeSetting=e,t.dataset.theme=e==="system"?s.matches?"dark":"light":e};c(a());})();
-</script><link rel="stylesheet" href="/smoothdev/assets/search.css" /></head><body data-section="tools"><a class="nacara-skip-link" href="#nacara-content">Skip to content</a><header class="nacara-navbar" role="banner"><button class="nacara-icon-button" type="button" data-nacara-menu-toggle="true" aria-label="Open the menu"><span><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16" /></svg></span></button><a class="nacara-navbar__brand" href="/smoothdev/">smoothdev</a><ul class="nacara-navbar__items" role="navigation" aria-label="Main"><li><a class="nacara-navbar__link" href="/smoothdev/guide/introduction/" data-active="false">Guide</a></li></ul><ul class="nacara-navbar__items nacara-navbar__items--end"><li><button class="nacara-search__trigger" type="button" data-nacara-search data-bundle="/smoothdev/pagefind/" aria-label="Search"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg><span>Search</span><span class="nacara-search__kbd" data-nacara-search-shortcut>Ctrl K</span></button></li><li><a class="nacara-icon-button" href="https://github.com/smoothdeveloper/smoothdev" aria-label="GitHub" title="GitHub"><span><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z" /></svg></span></a></li><li><select class="nacara-theme-select" data-nacara-theme="true" aria-label="Colour scheme"><option value="light">Light</option><option value="dark">Dark</option><option value="system">System</option></select></li></ul></header><div class="nacara-layout"><nav class="nacara-sidebar" aria-label="Section"><ul class="nacara-sidebar__sections"><li><a class="nacara-sidebar__link" href="/smoothdev/guide/introduction/">Guide</a></li></ul><ul class="nacara-sidebar__list"><li><a class="nacara-sidebar__link" href="/smoothdev/tools/smoothdev-web/server-url/">ASP.NET server</a></li><li><a class="nacara-sidebar__link" href="/smoothdev/tools/smoothdev-web/vite-proxy/" aria-current="page">Vite proxy</a></li><li><a class="nacara-sidebar__link" href="/smoothdev/tools/smoothdev-web/">smoothdev.web</a></li></ul></nav><main id="nacara-content" tabindex="-1" class="nacara-content"><h1>Vite proxy</h1><div><p><a id="vite-proxy"></a></p><p>The tool picks a free port for the dev server, sets <code>SMOOTHDEV_WEB_SERVER_URL</code> to <code>http://127.0.0.1:&lt;port></code>, and starts Vite with that value in the environment.</p><p>Vite loads <code>server.proxy</code> through <code>resolveConfig</code>. At least one prefix has to target that URL. <code>localhost</code> and <code>127.0.0.1</code> on the same port count as that server. When some prefix already does, there is no warning.</p><p>If <code>server.proxy</code> is missing or empty, the tool says Vite has no <code>server.proxy</code> and names the dev server URL. If there are proxies and none of them is that server, it lists every prefix and target and says none is the dev server. Both messages link here.</p><p>A fixed <code>http://localhost:5000</code> target misses the server the same way a hard-coded <code>UseUrls</code> misses <code>ASPNETCORE_URLS</code>. The tool owns the port. Vite keeps the target the config resolved, so a page request through that prefix never reaches the process the tool started.</p><figure class="nacara-code" data-language="js" data-frame="code" data-source='// ❌ DON&#39;T: a fixed port. The tool already chose one and put it in SMOOTHDEV_WEB_SERVER_URL.
+<!DOCTYPE html>
+<html lang="en" dir="ltr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Vite proxy · smoothdev</title><link rel="canonical" href="https://smoothdeveloper.github.io/smoothdev/tools/smoothdev-web/vite-proxy/"><meta property="og:url" content="https://smoothdeveloper.github.io/smoothdev/tools/smoothdev-web/vite-proxy/"><meta property="og:site_name" content="smoothdev"><meta property="og:locale" content="en"><meta name="twitter:card" content="summary_large_image"><meta property="og:title" content="Vite proxy"><meta property="og:type" content="article"><link rel="stylesheet" href="/smoothdev/assets/css/nacara.f8963a80.css"><script>(()=>{var o="nacara-theme",s=matchMedia("(prefers-color-scheme: dark)"),a=()=>{try{return localStorage.getItem(o)||"system"}catch{return"system"}},c=e=>{let t=document.documentElement;t.dataset.themeSetting=e,t.dataset.theme=e==="system"?s.matches?"dark":"light":e};c(a());})();
+</script><link rel="stylesheet" href="/smoothdev/assets/search.css"></head><body data-section="tools"><a class="nacara-skip-link" href="#nacara-content">Skip to content</a><header class="nacara-navbar" role="banner"><button class="nacara-icon-button" type="button" data-nacara-menu-toggle="true" aria-label="Open the menu"><span><svg xmlns="http://www.w3.org/2000/svg"
+                 viewBox="0 0 24 24"
+                 fill="none"
+                 stroke="currentColor"
+                 stroke-width="2"
+                 stroke-linecap="round"
+                 stroke-linejoin="round"
+                 aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg></span></button><a class="nacara-navbar__brand" href="/smoothdev/">smoothdev</a><ul class="nacara-navbar__items" role="navigation" aria-label="Main"><li><a class="nacara-navbar__link" href="/smoothdev/guide/introduction/" data-active="false">Guide</a></li></ul><ul class="nacara-navbar__items nacara-navbar__items--end"><li><button class="nacara-search__trigger"
+                        type="button"
+                        data-nacara-search
+                        data-bundle="/smoothdev/pagefind/"
+                        aria-label="Search"><svg xmlns="http://www.w3.org/2000/svg"
+                     viewBox="0 0 24 24"
+                     fill="none"
+                     stroke="currentColor"
+                     stroke-width="2"
+                     stroke-linecap="round"
+                     aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><span>Search</span><span class="nacara-search__kbd" data-nacara-search-shortcut>Ctrl K</span></button></li><li><a class="nacara-icon-button" href="https://github.com/smoothdeveloper/smoothdev" aria-label="GitHub" title="GitHub"><span><svg xmlns="http://www.w3.org/2000/svg"
+                 viewBox="0 0 16 16"
+                 fill="currentColor"
+                 aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg></span></a></li><li><select class="nacara-theme-select" data-nacara-theme="true" aria-label="Colour scheme"><option value="light">Light</option><option value="dark">Dark</option><option value="system">System</option></select></li></ul></header><div class="nacara-layout"><nav class="nacara-sidebar" aria-label="Section"><ul class="nacara-sidebar__sections"><li><a class="nacara-sidebar__link" href="/smoothdev/guide/introduction/">Guide</a></li></ul><ul class="nacara-sidebar__list"><li><a class="nacara-sidebar__link" href="/smoothdev/tools/smoothdev-web/server-url/">ASP.NET server</a></li><li><a class="nacara-sidebar__link" href="/smoothdev/tools/smoothdev-web/platforms/">Platform differences</a></li><li><a class="nacara-sidebar__link" href="/smoothdev/tools/smoothdev-web/vite-proxy/" aria-current="page">Vite proxy</a></li><li><a class="nacara-sidebar__link" href="/smoothdev/tools/smoothdev-web/">smoothdev.web</a></li></ul></nav><main id="nacara-content" tabIndex="-1" class="nacara-content"><h1>Vite proxy</h1><div><p><a id="vite-proxy"></a></p>
+<p>The tool picks a free port for the dev server, sets <code>SMOOTHDEV_WEB_SERVER_URL</code> to <code>http://127.0.0.1:&lt;port&gt;</code>, and starts Vite with that value in the environment.</p>
+<p>Vite loads <code>server.proxy</code> through <code>resolveConfig</code>. At least one prefix has to target that URL. <code>localhost</code> and <code>127.0.0.1</code> on the same port count as that server. When some prefix already does, there is no warning.</p>
+<p>If <code>server.proxy</code> is missing or empty, the tool says Vite has no <code>server.proxy</code> and names the dev server URL. If there are proxies and none of them is that server, it lists every prefix and target and says none is the dev server. Both messages link here.</p>
+<p>A fixed <code>http://localhost:5000</code> target misses the server the same way a hard-coded <code>UseUrls</code> misses <code>ASPNETCORE_URLS</code>. The tool owns the port. Vite keeps the target the config resolved, so a page request through that prefix never reaches the process the tool started.</p>
+<figure class="nacara-code"
+        data-language="js"
+        data-frame="code"
+        data-source="// ❌ DON&#39;T: a fixed port. The tool already chose one and put it in SMOOTHDEV_WEB_SERVER_URL.
 export default defineConfig({
-  server: { proxy: { "/api": "http://localhost:5000" } },
-});'><div class="nacara-code__body"><pre><code><span class="nacara-code__line"><span class="tok-comment">// ❌ DON'T: a fixed port. The tool already chose one and put it in SMOOTHDEV_WEB_SERVER_URL.</span>
+  server: { proxy: { &quot;/api&quot;: &quot;http://localhost:5000&quot; } },
+});"><div class="nacara-code__body"><pre><code><span class="nacara-code__line"><span class="tok-comment">// ❌ DON'T: a fixed port. The tool already chose one and put it in SMOOTHDEV_WEB_SERVER_URL.</span>
 </span><span class="nacara-code__line"><span class="tok-keyword">export</span> <span class="tok-keyword">default</span> <span class="tok-function">defineConfig</span><span class="tok-punctuation">({</span>
 </span><span class="nacara-code__line">  <span class="tok-property">server</span>: <span class="tok-punctuation">{</span> <span class="tok-property">proxy</span>: <span class="tok-punctuation">{</span> <span class="tok-string">"/api"</span>: <span class="tok-string">"http://localhost:5000"</span> <span class="tok-punctuation">}</span> <span class="tok-punctuation">},</span>
 </span><span class="nacara-code__line"><span class="tok-punctuation">});</span>
-</span></code></pre><button class="nacara-code__copy" type="button" aria-label="Copy code"><svg class="nacara-code__copy-idle" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2" /><path d="M5 15V5a2 2 0 0 1 2-2h10" /></svg><svg class="nacara-code__copy-done" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5" /></svg></button></div></figure><figure class="nacara-code" data-language="js" data-frame="code" data-source='// ✅ DO: proxy to the URL the tool passed. A fixed URL is only for a bare `vite`.
-const server = process.env.SMOOTHDEV_WEB_SERVER_URL ?? "http://127.0.0.1:5000";
+</span></code></pre><button class="nacara-code__copy"
+                       type="button"
+                       aria-label="Copy code"><svg class="nacara-code__copy-idle"
+                     viewBox="0 0 24 24"
+                     fill="none"
+                     stroke="currentColor"
+                     stroke-width="2"
+                     stroke-linecap="round"
+                     stroke-linejoin="round"
+                     aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2" /><path d="M5 15V5a2 2 0 0 1 2-2h10" /></svg><svg class="nacara-code__copy-done"
+                     viewBox="0 0 24 24"
+                     fill="none"
+                     stroke="currentColor"
+                     stroke-width="2.5"
+                     stroke-linecap="round"
+                     stroke-linejoin="round"
+                     aria-hidden="true"><path d="M20 6 9 17l-5-5" /></svg></button></div></figure><figure class="nacara-code"
+        data-language="js"
+        data-frame="code"
+        data-source="// ✅ DO: proxy to the URL the tool passed. A fixed URL is only for a bare `vite`.
+const server = process.env.SMOOTHDEV_WEB_SERVER_URL ?? &quot;http://127.0.0.1:5000&quot;;
 
 export default defineConfig({
-  server: { proxy: { "/api": server } },
-});'><div class="nacara-code__body"><pre><code><span class="nacara-code__line"><span class="tok-comment">// ✅ DO: proxy to the URL the tool passed. A fixed URL is only for a bare `vite`.</span>
+  server: { proxy: { &quot;/api&quot;: server } },
+});"><div class="nacara-code__body"><pre><code><span class="nacara-code__line"><span class="tok-comment">// ✅ DO: proxy to the URL the tool passed. A fixed URL is only for a bare `vite`.</span>
 </span><span class="nacara-code__line"><span class="tok-keyword">const</span> <span class="tok-variable">server</span> <span class="tok-operator">=</span> <span class="tok-variable">process</span><span class="tok-punctuation">.</span><span class="tok-property">env</span><span class="tok-punctuation">.</span><span class="tok-property">SMOOTHDEV_WEB_SERVER_URL</span> <span class="tok-operator">??</span> <span class="tok-string">"http://127.0.0.1:5000"</span><span class="tok-punctuation">;</span>
 </span><span class="nacara-code__line">
 </span><span class="nacara-code__line"><span class="tok-keyword">export</span> <span class="tok-keyword">default</span> <span class="tok-function">defineConfig</span><span class="tok-punctuation">({</span>
 </span><span class="nacara-code__line">  <span class="tok-property">server</span>: <span class="tok-punctuation">{</span> <span class="tok-property">proxy</span>: <span class="tok-punctuation">{</span> <span class="tok-string">"/api"</span>: <span class="tok-variable">server</span> <span class="tok-punctuation">}</span> <span class="tok-punctuation">},</span>
 </span><span class="nacara-code__line"><span class="tok-punctuation">});</span>
-</span></code></pre><button class="nacara-code__copy" type="button" aria-label="Copy code"><svg class="nacara-code__copy-idle" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2" /><path d="M5 15V5a2 2 0 0 1 2-2h10" /></svg><svg class="nacara-code__copy-done" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5" /></svg></button></div></figure></div><a class="nacara-edit-link" href="https://github.com/smoothdeveloper/smoothdev/edit/main/docs/content/tools/smoothdev-web/vite-proxy.md"><span><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" /></svg></span><span>Edit this page</span></a><nav class="nacara-page-nav"><a class="nacara-page-nav__link nacara-page-nav__link--previous" href="/smoothdev/tools/smoothdev-web/server-url/"><span class="nacara-page-nav__label">Previous</span><span>ASP.NET server</span></a><a class="nacara-page-nav__link nacara-page-nav__link--next" href="/smoothdev/tools/smoothdev-web/"><span class="nacara-page-nav__label">Next</span><span>smoothdev.web</span></a></nav></main></div><footer class="nacara-footer"><p>Built with Nacara</p></footer><script src="/smoothdev/assets/nacara.b41588fb.js" defer="defer"></script><script src="/smoothdev/assets/search.js" defer="defer"></script></body></html>
+</span></code></pre><button class="nacara-code__copy"
+                       type="button"
+                       aria-label="Copy code"><svg class="nacara-code__copy-idle"
+                     viewBox="0 0 24 24"
+                     fill="none"
+                     stroke="currentColor"
+                     stroke-width="2"
+                     stroke-linecap="round"
+                     stroke-linejoin="round"
+                     aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2" /><path d="M5 15V5a2 2 0 0 1 2-2h10" /></svg><svg class="nacara-code__copy-done"
+                     viewBox="0 0 24 24"
+                     fill="none"
+                     stroke="currentColor"
+                     stroke-width="2.5"
+                     stroke-linecap="round"
+                     stroke-linejoin="round"
+                     aria-hidden="true"><path d="M20 6 9 17l-5-5" /></svg></button></div></figure></div><a class="nacara-edit-link" href="https://github.com/smoothdeveloper/smoothdev/edit/main/docs/content/tools/smoothdev-web/vite-proxy.md"><span><svg xmlns="http://www.w3.org/2000/svg"
+                 viewBox="0 0 24 24"
+                 fill="none"
+                 stroke="currentColor"
+                 stroke-width="2"
+                 stroke-linecap="round"
+                 stroke-linejoin="round"
+                 aria-hidden="true"><path d="M12 20h9"/>
+               <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></span><span> Edit this page</span></a><nav class="nacara-page-nav"><a class="nacara-page-nav__link nacara-page-nav__link--previous" href="/smoothdev/tools/smoothdev-web/platforms/"><span class="nacara-page-nav__label">Previous</span><span>Platform differences</span></a><a class="nacara-page-nav__link nacara-page-nav__link--next" href="/smoothdev/tools/smoothdev-web/"><span class="nacara-page-nav__label">Next</span><span>smoothdev.web</span></a></nav></main></div><footer class="nacara-footer"><p>Built with Nacara</p></footer><script src="/smoothdev/assets/nacara.b41588fb.js" defer="defer"></script><script src="/smoothdev/assets/search.js" defer="defer"></script></body></html>
