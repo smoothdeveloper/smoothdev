@@ -21,3 +21,5 @@ dotnet fsi build.fsx -- install
 `scan gui` walks a folder for Vite apps, Web SDK projects and `smoothdev.web.json` files, and opens one of them with the same controls as a single app. From this repository's build script, `dotnet fsi build.fsx -- watch` runs that scan under `dotnet watch`, using the directory the script was started from.
 
 An ASP.NET server has to listen on the URL the tool passed. That contract is [ASP.NET server](server-url.md).
+
+A Vite `server.proxy` entry has to target `SMOOTHDEV_WEB_SERVER_URL`. That contract is [Vite proxy](vite-proxy.md).

@@ -225,11 +225,49 @@ let exists pid =
 
 let alive pid = not (reap pid) && exists pid
 
-/// True while any member of the process group runs.
+/// True while any member of the process group runs. A zombie still answers `kill -0`, and so does a
+/// group id this process may not signal, so this alone is not enough to keep an entry.
 let groupAlive pgid =
   resolver.Force()
   reap pgid |> ignore
   pgid > 1 && (Native.kill (-pgid, 0) = 0 || lastErrno () = EPERM)
+
+/// A `ps -o pgid=,stat=` listing has a non-zombie member of `pgid`.
+let liveInGroup (psOutput: string) pgid =
+  pgid > 1
+  && psOutput.Split('\n', StringSplitOptions.RemoveEmptyEntries)
+     |> Array.exists (fun line ->
+       match line.Split(' ', StringSplitOptions.RemoveEmptyEntries) with
+       | [| g; stat |] ->
+         match Int32.TryParse g with
+         | true, n -> n = pgid && not (stat.StartsWith 'Z')
+         | _ -> false
+       | _ -> false)
+
+/// True when `ps` shows a live (not zombie) member. Falls back to `groupAlive` when `ps` cannot be read.
+let groupHasLiveMember pgid =
+  if pgid <= 1 then
+    false
+  else
+    try
+      use p = new System.Diagnostics.Process()
+      p.StartInfo.FileName <- "ps"
+      p.StartInfo.Arguments <- "-A -o pgid=,stat="
+      p.StartInfo.RedirectStandardOutput <- true
+      p.StartInfo.UseShellExecute <- false
+
+      if not (p.Start()) then
+        groupAlive pgid
+      else
+        let text = p.StandardOutput.ReadToEnd()
+        p.WaitForExit()
+
+        if p.ExitCode <> 0 || text = "" then
+          groupAlive pgid
+        else
+          liveInGroup text pgid
+    with _ ->
+      groupAlive pgid
 
 let processGroup pid =
   resolver.Force()

@@ -72,9 +72,11 @@ let remove root (name: string) =
 let leaderAlive (e: Entry) =
   Posix.alive e.pid && (e.pgid = 0 || Posix.processGroup e.pid = e.pgid)
 
-/// Something of the entry still runs: its leader, or any member of its process group.
+/// Something of the entry still runs: its leader, or a non-zombie member of its process group.
+/// `kill -0` on the group stays true for zombies and for a group this process cannot signal, which
+/// left a dead dev server shown as orphaned. `ps` is the check that drops those.
 let isAlive (e: Entry) =
-  leaderAlive e || (e.pgid > 0 && Posix.groupAlive e.pgid)
+  leaderAlive e || (e.pgid > 0 && Posix.groupHasLiveMember e.pgid)
 
 let runState (e: Entry) =
   if leaderAlive e then
