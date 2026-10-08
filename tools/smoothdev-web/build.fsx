@@ -54,9 +54,19 @@ module Stages =
     else
       $"sh -c \"{drop} || true\""
 
+  /// Windows locks a running program's files, which fails the uninstall: stop running instances first.
+  let release =
+    if OperatingSystem.IsWindows() then
+      "powershell -NoProfile -ExecutionPolicy Bypass -File release-running.ps1"
+    else
+      // POSIX replaces a running program's files without complaint; a stage cannot skip a `run`
+      // conditionally, so this is a no-op placeholder.
+      "sh -c true"
+
   let install =
     stage "install" {
       workingDir here
+      run release
       run uninstall
       run "dotnet tool install --global smoothdev.web --add-source ./artifacts --version 0.1.0"
     }
@@ -71,9 +81,15 @@ module Stages =
         $"dotnet watch --non-interactive --property:RunWorkingDirectory={root} run -- scan gui"
     }
 
+/// `dotnet fsi` appends --preferreduilang:<culture> to the script's arguments on some setups,
+/// which the command parser rejects as an unknown option.
+let scriptArgs =
+  Args.script ()
+  |> Array.filter (fun a -> not (a.StartsWith "--preferreduilang"))
+
 do
   exit (
-    rootCommandOfScript {
+    rootCommand (scriptArgs) {
       description "smoothdev.web build"
 
       command "check" {

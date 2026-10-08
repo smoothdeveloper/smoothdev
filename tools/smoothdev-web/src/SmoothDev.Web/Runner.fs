@@ -71,7 +71,7 @@ let internal start root name (argv: string array) env cwd port url : Result<Entr
     , $"# {DateTimeOffset.Now:``yyyy-MM-dd HH:mm:ss``} smoothdev-web started {name}: {commandLine argv}\n# in {cwd}\n"
   )
 
-  Posix.spawn argv (environment env) cwd log
+  ProcessManagement.spawn argv (environment env) cwd log
   |> Result.map (fun pid ->
     let entry =
       {
@@ -125,13 +125,16 @@ let parseTable (psOutput: string) =
 let processTable () =
   task {
     try
-      let! result =
-        (Cli.wrap "ps"
-         |> Cli.args [ "-A"; "-o"; "pid=,ppid=,pgid=,stat=" ]
-         |> Cli.validation CommandResultValidation.None)
-          .ExecuteBufferedAsync()
+      if OperatingSystem.IsWindows() then
+        return { table = ProcessManagement.Windows.processRows (); zombies = Set.empty }
+      else
+        let! result =
+          (Cli.wrap "ps"
+           |> Cli.args [ "-A"; "-o"; "pid=,ppid=,pgid=,stat=" ]
+           |> Cli.validation CommandResultValidation.None)
+            .ExecuteBufferedAsync()
 
-      return parseTable result.StandardOutput
+        return parseTable result.StandardOutput
     with _ ->
       return { table = [||]; zombies = Set.empty }
   }
@@ -177,13 +180,13 @@ let stop root (e: Entry) (timeout: TimeSpan) =
     // from a fresh `ps` snapshot (zombies are gone); kill -0 when ps is unavailable
     let gone () =
       task {
-        pids |> Array.iter (Posix.reap >> ignore)
+        pids |> Array.iter (ProcessManagement.reap >> ignore)
         let! now = processTable ()
 
         if now.table.Length = 0 then
           return
-            pids |> Array.forall (Posix.alive >> not)
-            && (e.pgid = 0 || not (Posix.groupAlive e.pgid))
+            pids |> Array.forall (ProcessManagement.alive >> not)
+            && (e.pgid = 0 || not (ProcessManagement.groupAlive e.pgid))
         else
           return
             pids |> Array.forall (running now >> not)
@@ -192,11 +195,11 @@ let stop root (e: Entry) (timeout: TimeSpan) =
 
     let signalAll signo =
       if e.pgid > 0 then
-        Posix.signalGroup e.pgid signo |> ignore
+        ProcessManagement.signalGroup e.pgid signo |> ignore
 
-      pids |> Array.iter (fun p -> Posix.signal p signo |> ignore)
+      pids |> Array.iter (fun p -> ProcessManagement.signal p signo |> ignore)
 
-    signalAll Posix.SIGTERM
+    signalAll ProcessManagement.SIGTERM
     let deadline = DateTime.UtcNow + timeout
 
     let! first = gone ()
@@ -210,7 +213,7 @@ let stop root (e: Entry) (timeout: TimeSpan) =
     let forced = not finished
 
     if forced then
-      signalAll Posix.SIGKILL
+      signalAll ProcessManagement.SIGKILL
       do! Task.Delay 200
 
     State.remove root e.name

@@ -352,10 +352,10 @@ garbage line
   200 Z+
 """
 
-        Expect.isFalse (Posix.liveInGroup listing 100) "zombie leader"
-        Expect.isTrue  (Posix.liveInGroup listing 101) "sleeping member"
-        Expect.isFalse (Posix.liveInGroup listing 200) "zombie only"
-        Expect.isFalse (Posix.liveInGroup listing 999) "absent"
+        Expect.isFalse (ProcessManagement.Posix.liveInGroup listing 100) "zombie leader"
+        Expect.isTrue  (ProcessManagement.Posix.liveInGroup listing 101) "sleeping member"
+        Expect.isFalse (ProcessManagement.Posix.liveInGroup listing 200) "zombie only"
+        Expect.isFalse (ProcessManagement.Posix.liveInGroup listing 999) "absent"
       }
 
       test "start records a process group; stop ends every member and clears the state" {
@@ -364,7 +364,7 @@ garbage line
         let argv = [| "/bin/sh"; "-c"; "sleep 60 & (sleep 60 &) ; echo started; wait" |]
         let e = Runner.start dir.path "demo" argv [| "DEMO", "1" |] dir.path 0 "" |> ok
         Expect.equal e.pgid e.pid "leader of its own group"
-        Expect.notEqual (Posix.processGroup e.pid) (Posix.processGroup Environment.ProcessId) "not our group"
+        Expect.notEqual (ProcessManagement.processGroup e.pid) (ProcessManagement.processGroup Environment.ProcessId) "not our group"
 
         Expect.isTrue
           (waitUntil (TimeSpan.FromSeconds 5.) (fun () -> (File.ReadAllText e.log).Contains "started"))
@@ -379,10 +379,10 @@ garbage line
 
         let forced = (Runner.stop dir.path e (TimeSpan.FromSeconds 5.)).Result
         Expect.isFalse forced "SIGTERM was enough"
-        Expect.isTrue (waitUntil (TimeSpan.FromSeconds 3.) (fun () -> not (Posix.groupAlive e.pgid))) "group gone"
+        Expect.isTrue (waitUntil (TimeSpan.FromSeconds 3.) (fun () -> not (ProcessManagement.groupAlive e.pgid))) "group gone"
 
         Expect.isTrue
-          (waitUntil (TimeSpan.FromSeconds 3.) (fun () -> pids |> Array.forall (Posix.alive >> not)))
+          (waitUntil (TimeSpan.FromSeconds 3.) (fun () -> pids |> Array.forall (ProcessManagement.alive >> not)))
           "no orphans"
 
         Expect.isEmpty (State.read dir.path) "state cleared"
@@ -398,7 +398,7 @@ garbage line
         Expect.isTrue (waitUntil (TimeSpan.FromSeconds 5.) (fun () -> (File.ReadAllText e.log).Contains "ready")) "log"
         let forced = (Runner.stop dir.path e (TimeSpan.FromSeconds 1.)).Result
         Expect.isTrue forced "needed SIGKILL"
-        Expect.isTrue (waitUntil (TimeSpan.FromSeconds 3.) (fun () -> not (Posix.groupAlive e.pgid))) "gone"
+        Expect.isTrue (waitUntil (TimeSpan.FromSeconds 3.) (fun () -> not (ProcessManagement.groupAlive e.pgid))) "gone"
       }
 
       test "dead entries are dropped from the state file" {

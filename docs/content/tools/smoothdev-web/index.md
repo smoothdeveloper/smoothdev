@@ -23,3 +23,5 @@ dotnet fsi build.fsx -- install
 An ASP.NET server has to listen on the URL the tool passed. That contract is [ASP.NET server](server-url.md).
 
 A Vite `server.proxy` entry has to target `SMOOTHDEV_WEB_SERVER_URL`. That contract is [Vite proxy](vite-proxy.md).
+
+How starting, finding and stopping a process tree differ between Linux, macOS and Windows is [Platform differences](platforms.md).

@@ -23,7 +23,7 @@
     <Compile Include="Ports.fs" />
     <Compile Include="Config.fsi" />
     <Compile Include="Config.fs" />
-    <Compile Include="Posix.fs" />
+    <Compile Include="ProcessManagement.fs" />
     <Compile Include="State.fs" />
     <Compile Include="DocLink.fs" />
     <Compile Include="Runner.fs" />

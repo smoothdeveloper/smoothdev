@@ -204,6 +204,39 @@ let packageName dir =
 let clientCandidates =
   [| "."; "src/Client"; "src/client"; "client"; "src/Web"; "web"; "frontend" |]
 
+/// Vite apps under dir, at most depth folders down (shallowest first), skipping build, package and dot folders.
+let findViteApps depth dir =
+  let rec walk depth dir =
+    if depth < 0 || not (Directory.Exists dir) then
+      [||]
+    else
+      try
+        let below =
+          Directory.GetDirectories dir
+          |> Array.filter (fun d ->
+            let n = nameOf d
+            not (skipDirs.Contains n) && not (n.StartsWith '.'))
+          |> Array.sort
+          |> Array.collect (walk (depth - 1))
+
+        Array.append (if isViteApp dir then [| dir |] else [||]) below
+      with
+      | :? UnauthorizedAccessException
+      | :? IOException -> [||]
+
+  walk depth dir
+  |> Array.sortBy (fun d -> Path.GetRelativePath(dir, d).Split([| '/'; '\\' |]).Length)
+
+/// `build.outDir` of the vite config, resolved against the client folder; `dist` when it sets none.
+let detectDist clientDir =
+  let outDir =
+    viteConfigs clientDir
+    |> Array.tryPick (fun f ->
+      let m = Regex.Match(readText f, """outDir\s*:\s*["'`]([^"'`]+)["'`]""")
+      if m.Success then Some m.Groups[1].Value else None)
+
+  Path.GetFullPath(clientDir </> (outDir |> Option.defaultValue "dist"))
+
 /// Builds a config from what the folder contains: a Vite app (at the root or a usual client folder) and
 /// an ASP.NET Core project (Microsoft.NET.Sdk.Web) anywhere up to four folders down.
 let detect root =
@@ -213,12 +246,13 @@ let detect root =
     clientCandidates
     |> Array.map (fun c -> Path.GetFullPath(root </> c))
     |> Array.tryFind isViteApp
+    |> Option.orElse (findViteApps 3 root |> Array.tryHead)
     |> Option.map (fun dir ->
       {
         dir = dir
         fable = detectFable dir
         port = Defaults.vitePort
-        dist = dir </> "dist"
+        dist = detectDist dir
         basePath = None
       })
 
