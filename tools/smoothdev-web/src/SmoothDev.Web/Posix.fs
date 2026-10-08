@@ -4,8 +4,10 @@
 module SmoothDev.Web.Posix
 
 open System
+open System.IO
 open System.Reflection
 open System.Runtime.InteropServices
+open System.Threading
 
 let isMac = OperatingSystem.IsMacOS()
 
@@ -72,6 +74,15 @@ module Native =
   [<DllImport("libc")>]
   extern int posix_spawnp(int& pid, string file, nativeint actions, nativeint attr, nativeint argv, nativeint envp)
 
+  [<DllImport("libc")>]
+  extern int openpty(int& master, int& slave, nativeint name, nativeint term, nativeint win)
+
+  [<DllImport("libc")>]
+  extern int read(int fd, byte[] buf, int count)
+
+  [<DllImport("libc")>]
+  extern int close(int fd)
+
 let SIGHUP = 1
 let SIGINT = 2
 let SIGQUIT = 3
@@ -106,6 +117,30 @@ let freeStrings (p: nativeint) count =
 
   Marshal.FreeHGlobal p
 
+/// Copies the pty master onto the log as bytes arrive, so a build shows up while it is still running.
+/// A pipe would stay block-buffered inside `dotnet`; a pty makes it flush each line.
+let follow master log =
+  let thread =
+    Thread(
+      fun () ->
+        try
+          use fs = new FileStream(log, FileMode.Append, FileAccess.Write, FileShare.ReadWrite)
+          let buf = Array.zeroCreate 8192
+          let mutable n = 1
+
+          while n > 0 do
+            n <- Native.read (master, buf, buf.Length)
+
+            if n > 0 then
+              fs.Write(buf, 0, n)
+              fs.Flush()
+        finally
+          Native.close master |> ignore
+    )
+
+  thread.IsBackground <- true
+  thread.Start()
+
 /// Starts argv[0] (looked up on PATH) as the leader of a new process group, in cwd, with stdin from
 /// /dev/null and stdout + stderr appended to log. Signal dispositions and mask are reset to the defaults
 /// (.NET ignores SIGPIPE, which children would otherwise inherit). Returns the pid, also the group id.
@@ -137,17 +172,37 @@ let spawn (argv: string array) (env: string array) (cwd: string) (log: string) :
     Native.posix_spawn_file_actions_addopen (actions, 0, "/dev/null", 0, 0)
     |> ignore
 
-    Native.posix_spawn_file_actions_addopen (actions, 1, log, O_WRONLY ||| O_CREAT ||| O_APPEND, 0o644)
-    |> ignore
+    let mutable master = 0
+    let mutable slave = 0
+    // 200 columns: a narrow default pty would wrap build lines
+    let win = Marshal.AllocHGlobal 8
+    Marshal.WriteInt16(win, 0, 40s)
+    Marshal.WriteInt16(win, 2, 200s)
+    let pty = Native.openpty (&master, &slave, 0n, 0n, win) = 0
+    Marshal.FreeHGlobal win
 
-    Native.posix_spawn_file_actions_adddup2 (actions, 1, 2) |> ignore
+    if pty then
+      follow master log
+      Native.posix_spawn_file_actions_adddup2 (actions, slave, 1) |> ignore
+      Native.posix_spawn_file_actions_adddup2 (actions, slave, 2) |> ignore
+    else
+      Native.posix_spawn_file_actions_addopen (actions, 1, log, O_WRONLY ||| O_CREAT ||| O_APPEND, 0o644)
+      |> ignore
+
+      Native.posix_spawn_file_actions_adddup2 (actions, 1, 2) |> ignore
     Native.posix_spawn_file_actions_addchdir_np (actions, cwd) |> ignore
     let mutable pid = 0
     let rc = Native.posix_spawnp (&pid, argv[0], actions, attr, argvPtr, envPtr)
 
+    if pty then
+      Native.close slave |> ignore
+
     if rc = 0 then
       Ok pid
     else
+      if pty then
+        Native.close master |> ignore
+
       Error $"cannot start {argv[0]}: {Marshal.GetPInvokeErrorMessage rc}"
   finally
     Native.posix_spawn_file_actions_destroy actions |> ignore

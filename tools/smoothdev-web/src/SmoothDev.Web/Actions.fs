@@ -307,24 +307,38 @@ type ScanLive =
     url  : string
     log  : string }
 
+/// The app folder for a hit: the nearest smoothdev.web.json at or above it, inside the scan root.
+/// Stops at the scan root, so a page refresh does not walk the repository to detect the app.
+let scanAppRoot root dir =
+  let root = Path.GetFullPath root
+  let inside root (dir: string) =
+    dir = root || dir.StartsWith(root + string Path.DirectorySeparatorChar)
+  let rec up dir =
+    if File.Exists(dir </> Config.fileName) then
+      dir
+    else
+      match Directory.GetParent dir with
+      | null -> dir
+      | parent when not (inside root parent.FullName) -> dir
+      | parent -> up parent.FullName
+  up (Path.GetFullPath dir)
+
 /// Running components for the scan rows. A folder contains a hit when the hit path is the folder or under it.
-let scanLive (root: string) (rows: Config.ScanRow array) =
+let scanLive root (rows: Config.ScanRow array) =
   rows
   |> Array.collect (fun row ->
     match Config.scanAppDir root row.kind row.path with
     | None     -> [||]
     | Some dir ->
-      match Config.load dir with
-      | Error _ -> [||]
-      | Ok cfg  ->
-        State.live cfg.root
-        |> Array.filter (fun e -> Component.parse e.name <> Some Component.Gui)
-        |> Array.map (fun e ->
-          { path = row.path
-            app = cfg.name
-            name = e.name
-            url = e.url
-            log = e.log }))
+      let appDir = scanAppRoot root dir
+      State.live appDir
+      |> Array.filter (fun e -> Component.parse e.name <> Some Component.Gui)
+      |> Array.map (fun e ->
+        { path = row.path
+          app = if row.note = "" then Config.nameOf appDir else row.note
+          name = e.name
+          url = e.url
+          log = e.log }))
 
 let scanRunning path (live: ScanLive array) =
   live
