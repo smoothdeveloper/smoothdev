@@ -1,0 +1,27 @@
+// Dependencies for every .NET project in this repository (paket, not `dotnet add package`).
+// Each project lists the ones it uses in a paket.references next to it.
+//   dotnet tool restore && dotnet paket install
+source https://api.nuget.org/v3/index.json
+storage: none
+framework: net10.0
+
+nuget FSharp.Core
+
+// tools/smoothdev.web
+nuget Spectre.Console
+nuget UnMango.CliWrap.FSharp
+
+// tests
+nuget Expecto
+
+// docs
+nuget Nacara.Core
+nuget Nacara.Plugin.Markdown
+nuget Nacara.Plugin.Highlight.TreeSitter
+nuget Nacara.Plugin.Search
+nuget Nacara.Plugin.Sitemap
+nuget Nacara.Plugin.Assets.LightningCss
+nuget Nacara.Plugin.Assets.Esbuild
+nuget Nacara.Plugin.Assets.Nuglify
+nuget Nacara.Plugin.Deploy.GitHubPages
+nuget Nacara.Theme.Default

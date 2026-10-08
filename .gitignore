@@ -1,0 +1,17 @@
+bin/
+obj/
+node_modules/
+fable_modules/
+dist/
+.smoothdev/
+*.nupkg
+.DS_Store
+.vs/
+.idea/
+.vscode/
+# paket: regenerable folders (Paket.Restore.targets stays tracked)
+paket-files/
+.paket/*
+!.paket/Paket.Restore.targets
+artifacts/
+docs/output/
