@@ -222,25 +222,6 @@ let probe (url: string) =
       return None
   }
 
-/// Waits until the component answers HTTP on its URL; fails when it exits or the timeout passes.
-let waitReady (e: Entry) (timeout: TimeSpan) =
-  task {
-    let deadline = DateTime.UtcNow + timeout
-    let mutable result = None
-
-    while result.IsNone do
-      let! status = probe e.url
-
-      match status with
-      | Some _ -> result <- Some(Ok())
-      | None when not (State.isAlive e) -> result <- Some(Error $"{e.name} exited (log: {e.log})")
-      | None when DateTime.UtcNow > deadline ->
-        result <- Some(Error $"{e.name} did not answer on {e.url} within {int timeout.TotalSeconds}s (log: {e.log})")
-      | None -> do! Task.Delay 300
-
-    return Option.get result
-  }
-
 /// Reads a file another process is writing.
 let readShared (path: string) (fromEnd: int64) =
   if not (File.Exists path) then
@@ -260,6 +241,54 @@ let ansi =
 
 /// A log line without terminal colour codes (tools colour their output even when it goes to a file).
 let plain (line: string) = ansi.Replace(line, "").TrimEnd('\r')
+
+let serverUrlDoc = DocLink.url
+
+let private urlWithPort =
+  Text.RegularExpressions.Regex(@"https?://(?:\[[^\]]+\]|[^/\s:]+):(\d+)", Text.RegularExpressions.RegexOptions.IgnoreCase)
+
+/// Listen URLs a server printed for a port other than the one this tool passed.
+/// Only lines that say the process is listening, so a doc link in the build log is not one.
+let otherListenUrls (logText: string) (port: int) =
+  logText.Split '\n'
+  |> Array.collect (fun line ->
+    let text = plain line
+    if text.IndexOf("listening", StringComparison.OrdinalIgnoreCase) < 0 then
+      [||]
+    else
+      urlWithPort.Matches text
+      |> Seq.cast<Text.RegularExpressions.Match>
+      |> Seq.choose (fun m ->
+        match Int32.TryParse m.Groups[1].Value with
+        | true, found when found <> port -> Some m.Value
+        | _ -> None)
+      |> Seq.toArray)
+  |> Array.distinct
+
+/// Waits until the component answers HTTP on its URL; fails when it exits, the timeout passes,
+/// or the log shows it finished starting on a different port.
+let waitReady (e: Entry) (timeout: TimeSpan) =
+  task {
+    let deadline = DateTime.UtcNow + timeout
+    let mutable result = None
+
+    while result.IsNone do
+      let! status = probe e.url
+      let elsewhere = otherListenUrls (readShared e.log 65536L) e.port
+
+      match status with
+      | Some _ -> result <- Some(Ok())
+      | None when elsewhere.Length > 0 ->
+        let reported = String.concat ", " elsewhere
+        result <-
+          Some(Error $"{e.name} finished starting, but {e.url} is not serving it. The log reports {reported}. {serverUrlDoc}")
+      | None when not (State.isAlive e) -> result <- Some(Error $"{e.name} exited (log: {e.log})")
+      | None when DateTime.UtcNow > deadline ->
+        result <- Some(Error $"{e.name} did not answer on {e.url} within {int timeout.TotalSeconds}s (log: {e.log})")
+      | None -> do! Task.Delay 300
+
+    return Option.get result
+  }
 
 /// The last count lines of a log file, colour codes removed.
 let tail (path: string) count =

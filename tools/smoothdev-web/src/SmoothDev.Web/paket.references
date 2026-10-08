@@ -1,3 +1,4 @@
 FSharp.Core
 Spectre.Console
 UnMango.CliWrap.FSharp
+Partas.TypeProvider.BuildHelper
