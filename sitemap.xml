@@ -12,4 +12,7 @@
   <url>
     <loc>https://smoothdeveloper.github.io/smoothdev/tools/smoothdev-web/server-url/</loc>
   </url>
+  <url>
+    <loc>https://smoothdeveloper.github.io/smoothdev/tools/smoothdev-web/vite-proxy/</loc>
+  </url>
 </urlset>
