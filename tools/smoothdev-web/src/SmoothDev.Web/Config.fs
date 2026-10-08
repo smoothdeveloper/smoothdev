@@ -130,15 +130,23 @@ let rec findProjects depth dir =
   if depth < 0 || not (Directory.Exists dir) then
     [||]
   else
-    let here =
-      Array.append (Directory.GetFiles(dir, "*.fsproj")) (Directory.GetFiles(dir, "*.csproj"))
+    try
+      let here =
+        [|
+          yield! Directory.GetFiles(dir, "*.fsproj")
+          yield! Directory.GetFiles(dir, "*.csproj")
+          yield! Directory.GetFiles(dir, "*.vbproj")
+        |]
 
-    let below =
-      Directory.GetDirectories dir
-      |> Array.filter (fun d -> not (skipDirs.Contains(nameOf d)))
-      |> Array.collect (findProjects (depth - 1))
+      let below =
+        Directory.GetDirectories dir
+        |> Array.filter (fun d -> not (skipDirs.Contains(nameOf d)))
+        |> Array.collect (findProjects (depth - 1))
 
-    Array.append here below
+      Array.append here below
+    with
+    | :? UnauthorizedAccessException
+    | :? IOException -> [||]
 
 let scriptImport =
   Regex("""(?:src|from|import)\s*=?\s*["'](?:\./|/)?([A-Za-z0-9_\-.]+)/[^"']*\.m?js["']""")
@@ -435,6 +443,46 @@ let rec findRoot dir =
     | null -> None
     | parent -> findRoot parent.FullName
 
+let samePath a b = Path.GetFullPath a = Path.GetFullPath b
+
+/// path is the folder itself or a project file directly inside a child of it.
+let inside (parent: string) (path: string) =
+  let parent = Path.GetFullPath parent
+  let path = Path.GetFullPath path
+  let dir = Path.GetDirectoryName path |> nonNull |> Path.GetFullPath
+  dir = parent
+  || match Directory.GetParent dir with
+     | null -> false
+     | up -> up.FullName = parent
+
+/// A wider folder is the same app when the client directory and the server project sit in it,
+/// not merely somewhere further down a repository.
+let covers (inner: Config) (outer: Config) =
+  let client =
+    match inner.client, outer.client with
+    | None  , _      -> true
+    | Some a, Some b -> samePath a.dir b.dir && inside outer.root a.dir
+    | Some _, None   -> false
+
+  let server =
+    match inner.server, outer.server with
+    | None  , None   -> true
+    | None  , Some b -> inside outer.root b.project
+    | Some a, Some b -> samePath a.project b.project && inside outer.root a.project
+    | Some _, None   -> false
+
+  client && server && (inner.client.IsSome || inner.server.IsSome)
+
+/// A Vite folder and the Web SDK project beside it are one app. Detection from either folder
+/// walks up while the parent still describes that same client or server.
+let rec widen (cfg: Config) =
+  match Directory.GetParent cfg.root with
+  | null -> cfg
+  | parent ->
+    match detect parent.FullName with
+    | Ok up when covers cfg up -> widen up
+    | _ -> cfg
+
 /// The config of the app containing dir: the nearest smoothdev.web.json at or above it, else detection.
 let load dir =
   let dir = Path.GetFullPath dir
@@ -443,7 +491,7 @@ let load dir =
   | Some root ->
     let file = root </> fileName
     parse root (Some file) (File.ReadAllText file)
-  | None -> detect dir
+  | None -> detect dir |> Result.map widen
 
 /// The URL path the bundle is served under (Vite's `base`): "/" unless an absolute base is configured.
 let urlBase (basePath: string option) =

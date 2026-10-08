@@ -68,10 +68,11 @@ let rows (cfg: Config) =
 
     let state =
       match entry, unavailable cfg name with
-      | Some e, _                   -> Some(State.runState e)
-      | None  , _ when name = "gui" -> None
-      | None  , Some reason         -> Some(Unavailable reason)
-      | None  , None                -> Some Stopped
+      | Some e, _ when Runner.serverGaveUp e -> Some Stopped
+      | Some e, _                            -> Some(State.runState e)
+      | None  , _ when name = "gui"          -> None
+      | None  , Some reason                  -> Some(Unavailable reason)
+      | None  , None                         -> Some Stopped
 
     state
     |> Option.map (fun s ->
@@ -343,9 +344,17 @@ let devStart ctx =
   task {
     let cfg = ctx.config
 
-    let running =
+    let liveNow () =
       State.live cfg.root
       |> Array.filter (fun e -> Array.contains e.name devNames)
+
+    let stale = liveNow () |> Array.filter Runner.serverGaveUp
+
+    for e in stale do
+      let! _ = Runner.stop cfg.root e (TimeSpan.FromSeconds 5.)
+      ctx.say Info $"stopped {e.name}"
+
+    let running = liveNow ()
 
     if running.Length > 0 then
       let names = running |> Array.map _.name |> String.concat ", "
