@@ -32,53 +32,68 @@ let fail ctx (msg: string) =
 
 let done' () = Task.FromResult(Ok())
 
-let devNames = [| "server"; "fable"; "vite" |]
-let allNames = [| "server"; "fable"; "vite"; "prod"; "preview"; "gui" |]
-
-let roles =
-  dict
-    [
-      "server" , "dev server (dotnet watch)"
-      "fable"  , "Fable watch"
-      "vite"   , "Vite dev server"
-      "prod"   , "production server"
-      "preview", "dist preview (static)"
-      "gui"    , "web GUI"
-    ]
+let devNames = Component.dev |> Array.map _.name
+let allNames = Component.all |> Array.map _.name
 
 /// Why a component cannot run for this app, None when it can.
-let unavailable cfg name =
-  match name, cfg.client, cfg.server with
-  | "server" , _     , None                                 -> Some "no server"
-  | "fable"  , None  , _                                    -> Some "no client"
-  | "fable"  , Some c, _ when c.fable.IsPlugin              -> Some "vite-plugin-fable, inside Vite"
-  | "fable"  , Some c, _ when c.fable.IsNoFable             -> Some "no F# client"
-  | "vite"   , None  , _                                    -> Some "no client"
-  | "prod"   , _     , None                                 -> Some "static app: see preview"
-  | "preview", None  , _                                    -> Some "no client"
-  | "preview", Some c, _ when not (Directory.Exists c.dist) -> Some "no dist yet"
-  | _                                                       -> None
+let unavailable cfg part =
+  match part, cfg.client, cfg.server with
+  | Component.Server , _     , None                                 -> Some "no server"
+  | Component.Fable  , None  , _                                    -> Some "no client"
+  | Component.Fable  , Some c, _ when c.fable.IsPlugin              -> Some "vite-plugin-fable, inside Vite"
+  | Component.Fable  , Some c, _ when c.fable.IsNoFable             -> Some "no F# client"
+  | Component.Vite   , None  , _                                    -> Some "no client"
+  | Component.Prod   , _     , None                                 -> Some "static app: see preview"
+  | Component.Preview, None  , _                                    -> Some "no client"
+  | Component.Preview, Some c, _ when not (Directory.Exists c.dist) -> Some "no dist yet"
+  | _                                                               -> None
+
+/// `dotnet watch` prints this, in the CLI UI language, when the app has exited and the
+/// watch is idle until a file changes. The sentence is localised, so a French or German
+/// SDK would not contain these words. `startServerDev` passes `dotnetEnglish`, which
+/// forces en-US, and this is the only copy of the sentence the tool looks for.
+let [<Literal>] watchParked = "Waiting for a file to change before restarting"
+
+/// Makes `dotnet` print English, whatever the user's locale is.
+/// `DOTNET_CLI_UI_LANGUAGE` covers the CLI; `VSLANG` 1033 is en-US for the messages that follow it.
+let dotnetEnglish =
+  [|
+    "DOTNET_CLI_UI_LANGUAGE", "en"
+    "VSLANG"                , "1033"
+  |]
+
+/// The dev server is no longer the process we asked for: it bound another port, or `dotnet watch`
+/// parked after the app exited (`watchParked`, the sentence `startServerDev` forces into English).
+let serverGaveUp (e: Entry) =
+  if Component.parse e.name <> Some Component.Server || e.log = "" || not (File.Exists e.log) then
+    false
+  else
+    let text = Runner.readShared e.log 65536L
+
+    text.Contains(watchParked, StringComparison.OrdinalIgnoreCase)
+    || (Runner.otherListenUrls text e.port).Length > 0
 
 let rows (cfg: Config) =
   let live = State.live cfg.root
 
-  allNames
-  |> Array.choose (fun name ->
+  Component.all
+  |> Array.choose (fun part ->
+    let name = part.name
     let entry = live |> Array.tryFind (fun e -> e.name = name)
 
     let state =
-      match entry, unavailable cfg name with
-      | Some e, _ when Runner.serverGaveUp e -> Some Stopped
-      | Some e, _                            -> Some(State.runState e)
-      | None  , _ when name = "gui"          -> None
-      | None  , Some reason                  -> Some(Unavailable reason)
-      | None  , None                         -> Some Stopped
+      match entry, unavailable cfg part with
+      | Some e, _ when serverGaveUp e       -> Some Stopped
+      | Some e, _                           -> Some(State.runState e)
+      | None  , _ when part = Component.Gui -> None
+      | None  , Some reason                 -> Some(Unavailable reason)
+      | None  , None                        -> Some Stopped
 
     state
     |> Option.map (fun s ->
       {
         name  = name
-        role  = roles[name]
+        role  = part.role
         state = s
         entry = entry
       }))
@@ -117,7 +132,7 @@ let devUrl (cfg: Config) =
   let find n =
     live |> Array.tryFind (fun e -> e.name = n)
 
-  match find "vite", find "server" with
+  match find Component.Vite.name, find Component.Server.name with
   | Some v, _      -> Some v.url
   | None  , Some s -> Some s.url
   | None  , None   -> None
@@ -203,6 +218,7 @@ let startServerDev ctx (s: Server) =
       "DOTNET_WATCH_SUPPRESS_LAUNCH_BROWSER", "1"
       "DOTNET_WATCH_SUPPRESS_EMOJIS"        , "1"
       "DOTNET_NOLOGO"                       , "1"
+      yield! dotnetEnglish
     |]
 
   let argv =
@@ -215,10 +231,10 @@ let startServerDev ctx (s: Server) =
       s.project
     |]
 
-  Runner.start ctx.config.root "server" argv env (Path.GetDirectoryName s.project |> nonNull) port $"{url}/"
+  Runner.startComponent ctx.config.root Component.Server argv env (Path.GetDirectoryName s.project |> nonNull) port $"{url}/"
 
 let startFable ctx (c: Client) project outDir extension =
-  Runner.start ctx.config.root "fable" (fableArgv true project outDir extension) [| "DOTNET_NOLOGO", "1" |] c.dir 0 ""
+  Runner.startComponent ctx.config.root Component.Fable (fableArgv true project outDir extension) [| "DOTNET_NOLOGO", "1" |] c.dir 0 ""
 
 let startVite ctx (c: Client) (server: Entry option) =
   let port = pickPort ctx "Vite" c.port
@@ -245,9 +261,9 @@ let startVite ctx (c: Client) (server: Entry option) =
       c
       [| "--port"; string port; "--strictPort"; "--host"; "127.0.0.1" |]
 
-  Runner.start
+  Runner.startComponent
     ctx.config.root
-    "vite"
+    Component.Vite
     argv
     env
     c.dir
@@ -302,7 +318,7 @@ let scanLive (root: string) (rows: Config.ScanRow array) =
       | Error _ -> [||]
       | Ok cfg  ->
         State.live cfg.root
-        |> Array.filter (fun e -> e.name <> "gui")
+        |> Array.filter (fun e -> Component.parse e.name <> Some Component.Gui)
         |> Array.map (fun e ->
           { path = row.path
             app = cfg.name
@@ -348,7 +364,7 @@ let devStart ctx =
       State.live cfg.root
       |> Array.filter (fun e -> Array.contains e.name devNames)
 
-    let stale = liveNow () |> Array.filter Runner.serverGaveUp
+    let stale = liveNow () |> Array.filter serverGaveUp
 
     for e in stale do
       let! _ = Runner.stop cfg.root e (TimeSpan.FromSeconds 5.)
@@ -539,7 +555,7 @@ let prodStart ctx =
     task {
       let cfg = ctx.config
 
-      match cfg.server, State.find cfg.root "prod" with
+      match cfg.server, State.find cfg.root Component.Prod.name with
       | None, _ ->
         ctx.say
           Warn
@@ -587,9 +603,9 @@ let prodStart ctx =
           |]
 
         let e =
-          Runner.start
+          Runner.startComponent
             cfg.root
-            "prod"
+            Component.Prod
             [| "dotnet"; dll |]
             env
             out
@@ -601,7 +617,7 @@ let prodStart ctx =
         let! ready = Runner.waitReady e (TimeSpan.FromMinutes 1.)
 
         match ready with
-        | Ok() ->
+        | Ok () ->
           ctx.say Success $"prod ready: {e.url} (log: {e.log})"
         | Error msg ->
           showTail ctx e
@@ -614,7 +630,7 @@ let previewStart ctx =
   task {
     let cfg = ctx.config
 
-    match cfg.client, State.find cfg.root "preview" with
+    match cfg.client, State.find cfg.root Component.Preview.name with
     | None, _        -> return fail ctx "no client: nothing to preview"
     | Some _, Some e ->
       ctx.say Info $"preview is already running on {e.url}"
@@ -634,14 +650,14 @@ let previewStart ctx =
           string port
         |]
 
-      match Runner.start cfg.root "preview" argv [||] c.dir port $"http://127.0.0.1:{port}{urlBase}" with
+      match Runner.startComponent cfg.root Component.Preview argv [||] c.dir port $"http://127.0.0.1:{port}{urlBase}" with
       | Error msg -> return fail ctx msg
       | Ok e ->
         ctx.say Info (startedText e)
         let! ready = Runner.waitReady e (TimeSpan.FromSeconds 20.)
 
         match ready with
-        | Ok() ->
+        | Ok () ->
           ctx.say Success $"preview ready: {e.url}"
           return Ok e
         | Error msg ->
@@ -684,27 +700,26 @@ let openDist ctx =
   }
 
 /// Opens dev, dist (starting the preview) or prod; without a target the best running one.
-let openTarget ctx (target: string option) =
+let openTarget ctx target =
   let cfg = ctx.config
   let find n = State.find cfg.root n
 
   match target with
-  | Some "dev" ->
+  | Some ActionTarget.OpenDev ->
     match devUrl cfg with
     | Some url -> openUrl ctx url
     | None     -> Task.FromResult(fail ctx "dev is not running: `smoothdev-web dev start`")
-  | Some "dist"
-  | Some "preview" -> openDist ctx
-  | Some "prod"    ->
-    match cfg.server, find "prod" with
+  | Some ActionTarget.OpenDist -> openDist ctx
+  | Some ActionTarget.OpenProd ->
+    match cfg.server, find Component.Prod.name with
     | None, _ ->
       ctx.say Info "no server: the production form of this app is its dist"
       openDist ctx
     | Some _, Some e -> openUrl ctx e.url
     | Some _, None   -> Task.FromResult(fail ctx "prod is not running: `smoothdev-web prod start`")
-  | Some other -> Task.FromResult(fail ctx $"open what? dev, dist or prod, not \"{other}\"")
+  | Some other -> Task.FromResult(fail ctx $"open what? dev, dist or prod, not \"{other.route}\"")
   | None ->
-    match devUrl cfg, find "prod", find "preview", cfg.client with
+    match devUrl cfg, find Component.Prod.name, find Component.Preview.name, cfg.client with
     | Some url, _     , _     , _ -> openUrl ctx url
     | None    , Some p, _     , _ -> openUrl ctx p.url
     | None    , None  , Some v, _ -> openUrl ctx v.url
@@ -718,20 +733,30 @@ let ignoreValue (t: Task<Result<'a, string>>) =
     return r |> Result.map ignore
   }
 
-/// The actions the TUI and the GUI offer, by name.
-let perform ctx (action: string) : Task<Result<unit, string>> =
+/// Components an action stops. `Entry.name` is `_.name` of these.
+let stops action =
+  let names (parts: Component array) = parts |> Array.map _.name
+
   match action with
-  | "dev-start"     -> devStart     ctx
-  | "dev-stop"      -> stopNames    ctx devNames
-  | "prod-start"    -> prodStart    ctx
-  | "prod-stop"     -> stopNames    ctx [| "prod" |]
-  | "preview-start" -> previewStart ctx |> ignoreValue
-  | "preview-stop"  -> stopNames    ctx [| "preview" |]
-  | "dist"          -> dist         ctx
-  | "build"         -> build        ctx
-  | "open"          -> openTarget   ctx None
-  | "open-dev"      -> openTarget   ctx (Some "dev")
-  | "open-dist"     -> openTarget   ctx (Some "dist")
-  | "open-prod"     -> openTarget   ctx (Some "prod")
-  | "stop"          -> stopNames    ctx (allNames |> Array.filter ((<>) "gui"))
-  | other           -> Task.FromResult(fail ctx $"unknown action {other}")
+  | ActionTarget.DevStop     -> names Component.dev
+  | ActionTarget.ProdStop    -> names [| Component.Prod |]
+  | ActionTarget.PreviewStop -> names [| Component.Preview |]
+  | ActionTarget.Stop        -> names (Component.all |> Array.filter ((<>) Component.Gui))
+  | _                        -> [||]
+
+/// The actions the TUI and the GUI offer.
+let perform ctx (action: ActionTarget) : Task<Result<unit, string>> =
+  match action with
+  | ActionTarget.DevStart     -> devStart     ctx
+  | ActionTarget.DevStop      -> stopNames    ctx (stops action)
+  | ActionTarget.ProdStart    -> prodStart    ctx
+  | ActionTarget.ProdStop     -> stopNames    ctx (stops action)
+  | ActionTarget.PreviewStart -> previewStart ctx |> ignoreValue
+  | ActionTarget.PreviewStop  -> stopNames    ctx (stops action)
+  | ActionTarget.Dist         -> dist         ctx
+  | ActionTarget.Build        -> build        ctx
+  | ActionTarget.Open         -> openTarget   ctx None
+  | ActionTarget.OpenDev      -> openTarget   ctx (Some action)
+  | ActionTarget.OpenDist     -> openTarget   ctx (Some action)
+  | ActionTarget.OpenProd     -> openTarget   ctx (Some action)
+  | ActionTarget.Stop         -> stopNames    ctx (stops action)

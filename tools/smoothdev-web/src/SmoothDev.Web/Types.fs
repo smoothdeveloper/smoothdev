@@ -74,6 +74,106 @@ type Level =
   | Fail
   | Detail
 
+/// A tracked process. `name` is what `Entry.name` stores; the state file keeps those words.
+[<RequireQualifiedAccess>]
+type Component =
+  | Server
+  | Fable
+  | Vite
+  | Prod
+  | Preview
+  | Gui
+
+  member part.name =
+    match part with
+    | Server  -> "server"
+    | Fable   -> "fable"
+    | Vite    -> "vite"
+    | Prod    -> "prod"
+    | Preview -> "preview"
+    | Gui     -> "gui"
+
+  member part.role =
+    match part with
+    | Server  -> "dev server (dotnet watch)"
+    | Fable   -> "Fable watch"
+    | Vite    -> "Vite dev server"
+    | Prod    -> "production server"
+    | Preview -> "dist preview (static)"
+    | Gui     -> "web GUI"
+
+  static member parse name =
+    match name with
+    | "server"  -> Some Server
+    | "fable"   -> Some Fable
+    | "vite"    -> Some Vite
+    | "prod"    -> Some Prod
+    | "preview" -> Some Preview
+    | "gui"     -> Some Gui
+    | _         -> None
+
+  static member dev = [| Server; Fable; Vite |]
+  static member all = [| Server; Fable; Vite; Prod; Preview; Gui |]
+
+/// What the GUI, the TUI and the CLI ask the tool to do. The route is the form path and the busy label.
+[<RequireQualifiedAccess>]
+type ActionTarget =
+  | DevStart
+  | DevStop
+  | ProdStart
+  | ProdStop
+  | PreviewStart
+  | PreviewStop
+  | Dist
+  | Build
+  | Open
+  | OpenDev
+  | OpenDist
+  | OpenProd
+  | Stop
+
+  member action.route =
+    match action with
+    | DevStart     -> "dev-start"
+    | DevStop      -> "dev-stop"
+    | ProdStart    -> "prod-start"
+    | ProdStop     -> "prod-stop"
+    | PreviewStart -> "preview-start"
+    | PreviewStop  -> "preview-stop"
+    | Dist         -> "dist"
+    | Build        -> "build"
+    | Open         -> "open"
+    | OpenDev      -> "open-dev"
+    | OpenDist     -> "open-dist"
+    | OpenProd     -> "open-prod"
+    | Stop         -> "stop"
+
+  static member parse route =
+    match route with
+    | "dev-start"     -> Some DevStart
+    | "dev-stop"      -> Some DevStop
+    | "prod-start"    -> Some ProdStart
+    | "prod-stop"     -> Some ProdStop
+    | "preview-start" -> Some PreviewStart
+    | "preview-stop"  -> Some PreviewStop
+    | "dist"          -> Some Dist
+    | "build"         -> Some Build
+    | "open"          -> Some Open
+    | "open-dev"      -> Some OpenDev
+    | "open-dist"     -> Some OpenDist
+    | "open-prod"     -> Some OpenProd
+    | "stop"          -> Some Stop
+    | _               -> None
+
+  /// `smoothdev-web open <word>`. `preview` is the dist preview.
+  static member parseOpen word =
+    match word with
+    | "dev"      -> Some OpenDev
+    | "dist"
+    | "preview" -> Some OpenDist
+    | "prod"    -> Some OpenProd
+    | _         -> None
+
 /// Path.Combine, for scripts and tools that join paths a lot. Chain it: `root </> "dist" </> "index.html"`.
 [<AutoOpen>]
 module Paths =

@@ -58,33 +58,38 @@ let resetLog (path: string) =
   Directory.CreateDirectory(Path.GetDirectoryName path |> nonNull) |> ignore
   File.WriteAllText(path, "")
 
-/// Starts a component as its own process group, output to its log file, and records it in the state file.
-let start root name (argv: string array) env cwd port url : Result<Entry, string> =
+/// Starts a process group, writes its log, and records it under `name`. The product starts a
+/// `Component` (`startComponent`). This string form is for a process that is not one of those rows.
+let internal start root name (argv: string array) env cwd port url : Result<Entry, string> =
   let log = State.logFile root name
   Directory.CreateDirectory(State.logDir root) |> ignore
 
   File.WriteAllText(
-    log,
-    $"# {DateTimeOffset.Now:``yyyy-MM-dd HH:mm:ss``} smoothdev-web started {name}: {commandLine argv}\n# in {cwd}\n"
+    log
+    , $"# {DateTimeOffset.Now:``yyyy-MM-dd HH:mm:ss``} smoothdev-web started {name}: {commandLine argv}\n# in {cwd}\n"
   )
 
   Posix.spawn argv (environment env) cwd log
   |> Result.map (fun pid ->
     let entry =
       {
-        name = name
-        pid = pid
-        pgid = pid
-        port = port
-        url = url
-        log = log
-        command = argv
+        name      = name
+        pid       = pid
+        pgid      = pid
+        port      = port
+        url       = url
+        log       = log
+        command   = argv
         startedAt = DateTimeOffset.Now
-        owner = Environment.ProcessId
+        owner     = Environment.ProcessId
       }
 
     State.add root entry
     entry)
+
+/// Starts one of the tracked components. `part.name` is the state-file id and the log file name.
+let startComponent root (part: Component) argv env cwd port url =
+  start root part.name argv env cwd port url
 
 /// A process snapshot: (pid, ppid, pgid) rows, and the pids that are zombies (exited, not yet reaped by
 /// their parent: `kill -0` still succeeds on them, so they must not count as running).
@@ -264,17 +269,6 @@ let otherListenUrls (logText: string) (port: int) =
         | _ -> None)
       |> Seq.toArray)
   |> Array.distinct
-
-/// The dev server is no longer the process we started: it bound another port, or `dotnet watch`
-/// has parked after the app exited and is waiting for a file edit.
-let serverGaveUp (e: Entry) =
-  if e.name <> "server" || e.log = "" || not (File.Exists e.log) then
-    false
-  else
-    let text = readShared e.log 65536L
-
-    text.Contains("Waiting for a file to change before restarting", StringComparison.OrdinalIgnoreCase)
-    || (otherListenUrls text e.port).Length > 0
 
 /// Waits until the component answers HTTP on its URL; fails when it exits, the timeout passes,
 /// or the log shows it finished starting on a different port.
