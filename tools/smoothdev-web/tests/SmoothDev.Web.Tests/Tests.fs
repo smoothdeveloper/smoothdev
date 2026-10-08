@@ -464,8 +464,13 @@ garbage line
 
         let row = Actions.rows cfg |> Array.find (fun r -> r.name = "server")
         Expect.equal row.state Stopped "the row is stopped while the log shows another port"
-        let parked = dir.write ".smoothdev/web/logs/server.log" "Waiting for a file to change before restarting ...\n"
-        Expect.isTrue (Runner.serverGaveUp { (State.read cfg.root)[0] with log = parked }) "watch parked after the app exited"
+        let parked = dir.write ".smoothdev/web/logs/server.log" $"{Actions.watchParked} ...\n"
+        Expect.isTrue (Actions.serverGaveUp { (State.read cfg.root)[0] with log = parked }) "watch parked after the app exited"
+        let french = dir.write ".smoothdev/web/logs/server.log" "En attente de modification d'un fichier avant le redémarrage ...\n"
+        Expect.isFalse (Actions.serverGaveUp { (State.read cfg.root)[0] with log = french }) "a translated park line is not the sentence the tool knows"
+        let keys = Actions.dotnetEnglish |> Array.map fst
+        Expect.contains keys "DOTNET_CLI_UI_LANGUAGE" "watch is started in English"
+        Expect.contains keys "VSLANG" "MSBuild messages follow en-US"
       }
 
       test "the documentation link is the server-url page next to this tool" {

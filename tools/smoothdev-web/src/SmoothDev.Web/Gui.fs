@@ -70,29 +70,29 @@ let externalLink (url: string) =
 
 let stateClass state =
   match state with
-  | Running -> "running"
-  | Orphaned -> "orphaned"
-  | Stopped -> "stopped"
+  | Running       -> "running"
+  | Orphaned      -> "orphaned"
+  | Stopped       -> "stopped"
   | Unavailable _ -> "na"
 
-let button (here: string) action label =
+let button (here: string) (action: ActionTarget) label =
   let query =
     match here.IndexOf '?' with
     | -1 -> ""
     | i -> here.Substring i
 
-  $"""<form method="post" action="/action/{action}{query}"><button>{html label}</button></form>"""
+  $"""<form method="post" action="/action/{action.route}{query}"><button>{html label}</button></form>"""
 
 let controls (here: string) (r: Row) =
-  match r.name, r.state with
-  | "server", Unavailable _
-  | "fable", Unavailable _ -> ""
-  | ("server" | "fable" | "vite"), (Running | Orphaned) -> button here "dev-stop" "stop dev"
-  | ("server" | "fable" | "vite"), Stopped -> button here "dev-start" "start dev"
-  | "prod", (Running | Orphaned) -> button here "prod-stop" "stop" + button here "open-prod" "open"
-  | "prod", Stopped -> button here "prod-start" "start"
-  | "preview", (Running | Orphaned) -> button here "preview-stop" "stop" + button here "open-dist" "open"
-  | "preview", _ -> button here "preview-start" "start"
+  match Component.parse r.name, r.state with
+  | Some Component.Server, Unavailable _
+  | Some Component.Fable, Unavailable _ -> ""
+  | Some (Component.Server | Component.Fable | Component.Vite), (Running | Orphaned) -> button here ActionTarget.DevStop "stop dev"
+  | Some (Component.Server | Component.Fable | Component.Vite), Stopped -> button here ActionTarget.DevStart "start dev"
+  | Some Component.Prod, (Running | Orphaned) -> button here ActionTarget.ProdStop "stop" + button here ActionTarget.OpenProd "open"
+  | Some Component.Prod, Stopped -> button here ActionTarget.ProdStart "start"
+  | Some Component.Preview, (Running | Orphaned) -> button here ActionTarget.PreviewStop "stop" + button here ActionTarget.OpenDist "open"
+  | Some Component.Preview, _ -> button here ActionTarget.PreviewStart "start"
   | _ -> ""
 
 let page (cfg: Config) (rows: Row array) (selected: string option) (messages: string array) (busy: string) (here: string) =
@@ -185,7 +185,7 @@ let page (cfg: Config) (rows: Row array) (selected: string option) (messages: st
 <table><tr><th>component</th><th>state</th><th>pid</th><th>port</th><th>url</th><th>up</th><th>role</th><th></th></tr>
 {rows |> Array.map rowHtml |> String.concat "\n"}
 </table>
-<div class="bar">{button here "dist" "build dist"}{button here "build" "compile"}{button here "open" "open best"}{button here "stop" "stop all"}{busyHtml}</div>
+<div class="bar">{button here ActionTarget.Dist "build dist"}{button here ActionTarget.Build "compile"}{button here ActionTarget.Open "open best"}{button here ActionTarget.Stop "stop all"}{busyHtml}</div>
 <div class="tabs">log: {tabs}</div>
 <pre class="log">{log}</pre>
 {logStick}
@@ -215,7 +215,30 @@ let statusJson (rows: Row array) =
       |})
   )
 
-let write (response: HttpListenerResponse) (status: int) (contentType: string) (body: string) =
+/// Runs a posted action. The path segment is the route; anything else is reported and ignored.
+let dispatch (busy: string ref) push ctx raw =
+  match ActionTarget.parse raw with
+  | None -> push Fail $"unknown action {raw}"
+  | Some action ->
+    if busy.Value = "" then
+      busy.Value <- action.route
+
+      Task.Run(fun () ->
+        task {
+          try
+            let! _ = Actions.perform ctx action
+            ()
+          with e ->
+            push Fail e.Message
+
+          busy.Value <- ""
+        }
+        :> Task)
+      |> ignore
+    else
+      push Info $"busy ({busy.Value}): {action.route} ignored"
+
+let write (response: HttpListenerResponse) status contentType (body: string) =
   let bytes = Encoding.UTF8.GetBytes body
   response.StatusCode <- status
   response.ContentType <- contentType
@@ -250,7 +273,7 @@ let run (cfg: Config) (preferredPort: int option) (browser: bool) =
   // ports held by the app, except a GUI entry: `gui --detach` records this process before it starts
   let reserved =
     State.live cfg.root
-    |> Array.filter (fun e -> e.name <> "gui" && e.port > 0)
+    |> Array.filter (fun e -> Component.parse e.name <> Some Component.Gui && e.port > 0)
     |> Array.map _.port
 
   let port = Ports.pick reserved (preferredPort |> Option.defaultValue cfg.guiPort)
@@ -263,12 +286,12 @@ let run (cfg: Config) (preferredPort: int option) (browser: bool) =
   // `gui --detach` recorded this process (its group and log) before it started: keep that
   let recorded =
     State.read cfg.root
-    |> Array.tryFind (fun e -> e.name = "gui" && e.pid = Environment.ProcessId)
+    |> Array.tryFind (fun e -> Component.parse e.name = Some Component.Gui && e.pid = Environment.ProcessId)
 
   State.add
     cfg.root
     {
-      name      = "gui"
+      name      = Component.Gui.name
       pid       = Environment.ProcessId
       pgid      = recorded |> Option.map _.pgid |> Option.defaultValue 0
       port      = port
@@ -323,26 +346,7 @@ let run (cfg: Config) (preferredPort: int option) (browser: bool) =
 
       | "GET", "/api/status" -> write c.Response 200 "application/json" (statusJson (Actions.rows cfg))
       | "POST", p when p.StartsWith "/action/" ->
-        let action = p.Substring "/action/".Length
-
-        if busy.Value = "" then
-          busy.Value <- action
-
-          Task.Run(fun () ->
-            task {
-              try
-                let! _ = Actions.perform ctx action
-                ()
-              with e ->
-                push Fail e.Message
-
-              busy.Value <- ""
-            }
-            :> Task)
-          |> ignore
-        else
-          push Info $"busy ({busy.Value}): {action} ignored"
-
+        dispatch busy push ctx (p.Substring "/action/".Length)
         c.Response.Redirect "/"
         c.Response.StatusCode <- 303
         c.Response.Close()
@@ -367,7 +371,7 @@ let run (cfg: Config) (preferredPort: int option) (browser: bool) =
       }
 
     (Actions.stopOwned quiet).GetAwaiter().GetResult() |> ignore
-    State.remove cfg.root "gui"
+    State.remove cfg.root Component.Gui.name
 
   0
 
@@ -626,32 +630,13 @@ setInterval(keep, 300);
             match appFrom ctx.Request with
             | Error msg -> write ctx.Response 200 "text/html; charset=utf-8" $"<p>{html msg}</p>"
             | Ok(cfg, rel, kind) ->
-              let action = path.Substring "/action/".Length
+              let actx: Actions.Context =
+                { config  = cfg
+                  say     = fun level msg -> push level msg
+                  echo    = fun _ _ -> ()
+                  browser = true }
 
-              if busy.Value = "" then
-                busy.Value <- action
-
-                let actx: Actions.Context =
-                  { config = cfg
-                    say = fun level msg -> push level msg
-                    echo = fun _ _ -> ()
-                    browser = true }
-
-                Task.Run(fun () ->
-                  task {
-                    try
-                      let! _ = Actions.perform actx action
-                      ()
-                    with e ->
-                      push Fail e.Message
-
-                    busy.Value <- ""
-                  }
-                  :> Task)
-                |> ignore
-              else
-                push Info $"busy ({busy.Value}): {action} ignored"
-
+              dispatch busy push actx (path.Substring "/action/".Length)
               ctx.Response.Redirect(hereOf rel kind)
               ctx.Response.StatusCode <- 303
               ctx.Response.Close()
@@ -666,9 +651,9 @@ setInterval(keep, 300);
 
     for cfg in managed.Values |> Seq.toArray do
       let quiet: Actions.Context =
-        { config = cfg
-          say = fun _ msg -> printfn "%s" msg
-          echo = fun _ _ -> ()
+        { config  = cfg
+          say     = fun _ msg -> printfn "%s" msg
+          echo    = fun _ _ -> ()
           browser = false }
 
       (Actions.stopOwned quiet).GetAwaiter().GetResult() |> ignore
@@ -680,26 +665,36 @@ let detach (ctx: Actions.Context) (preferredPort: int option) =
   task {
     let cfg = ctx.config
 
-    match State.find cfg.root "gui" with
+    match State.find cfg.root Component.Gui.name with
     | Some e ->
       ctx.say Info $"the GUI is already running on {e.url}"
       return! Actions.openUrl ctx e.url
     | None ->
       let port =
-        Ports.pick (Actions.reserved cfg) (preferredPort |> Option.defaultValue cfg.guiPort)
+        Ports.pick 
+          (Actions.reserved cfg)
+          (preferredPort |> Option.defaultValue cfg.guiPort)
 
       let url = $"http://127.0.0.1:{port}/"
 
       let argv =
-        Array.append (Runner.selfArgv ()) [| "--dir"; cfg.root; "--no-browser"; "gui"; "--port"; string port |]
+        [|
+          yield! Runner.selfArgv ()
+          "--dir"
+          cfg.root
+          "--no-browser"
+          "gui"
+          "--port"
+          string port
+        |]
 
-      match Runner.start cfg.root "gui" argv [||] cfg.root port url with
+      match Runner.startComponent cfg.root Component.Gui argv [||] cfg.root port url with
       | Error msg -> return Actions.fail ctx msg
       | Ok e ->
         let! ready = Runner.waitReady e (TimeSpan.FromSeconds 20.)
 
         match ready with
-        | Ok() ->
+        | Ok () ->
           ctx.say Success $"GUI running in the background: {url} (pid {e.pid}; `smoothdev-web stop` ends it)"
           return! Actions.openUrl ctx url
         | Error msg -> return Actions.fail ctx msg

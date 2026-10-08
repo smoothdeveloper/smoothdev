@@ -197,28 +197,29 @@ let run (ctx: Actions.Context) (argv: string array) (command: string list) =
   | [ "status" ]           -> status ctx false
   | [ "status"; "--json" ] -> status ctx true
   | [ "dev"; "start" ]     -> wait (Actions.devStart ctx)
-  | [ "dev"; "stop" ]      -> wait (Actions.stopNames ctx Actions.devNames)
-  | [ "dev"; "restart" ]   ->
-    wait (Actions.stopNames ctx Actions.devNames) |> ignore
-    wait (Actions.devStart ctx)
+  | [ "dev"; "stop" ]      -> wait (Actions.perform ctx ActionTarget.DevStop)
+  | [ "dev"; "restart" ]   -> wait (Actions.stopNames ctx Actions.devNames) |> ignore
+                              wait (Actions.devStart ctx)
   | [ "prod"; "start" ]    -> wait (Actions.prodStart ctx)
-  | [ "prod"; "stop" ]     -> wait (Actions.stopNames ctx [| "prod" |])
-  | [ "preview"; "start" ] -> wait (Actions.perform ctx "preview-start")
-  | [ "preview"; "stop" ]  -> wait (Actions.stopNames ctx [| "preview" |])
-  | [ "build" ]        -> wait (Actions.build ctx)
-  | [ "dist" ]         -> wait (Actions.dist ctx)
-  | [ "open" ]         -> wait (Actions.openTarget ctx None)
-  | [ "open"; target ] -> wait (Actions.openTarget ctx (Some target))
+  | [ "prod"; "stop" ]     -> wait (Actions.perform ctx ActionTarget.ProdStop)
+  | [ "preview"; "start" ] -> wait (Actions.perform ctx ActionTarget.PreviewStart)
+  | [ "preview"; "stop" ]  -> wait (Actions.perform ctx ActionTarget.PreviewStop)
+  | [ "build" ]            -> wait (Actions.build ctx)
+  | [ "dist" ]             -> wait (Actions.dist ctx)
+  | [ "open" ]             -> wait (Actions.openTarget ctx None)
+  | [ "open"; target ]     -> match ActionTarget.parseOpen target with
+                              | Some action -> wait (Actions.openTarget ctx (Some action))
+                              | None        -> say Fail $"open what? dev, dist or prod, not \"{target}\""
+                                               1
   | "logs" :: rest ->
     let names, follow, count = logOptions rest [] false 40
     logs ctx.config names follow count
   | [ "stop" ] -> wait (Actions.stopNames ctx Actions.allNames)
-  | [ "tui" ] ->
-    let code = Tui.run ctx.config
-    printfn ""
-    printfn "smoothdev-web tui was started with:"
-    printfn "  %s" (invokedCommand argv)
-    code
+  | [ "tui" ]  -> let code = Tui.run ctx.config
+                  printfn ""
+                  printfn "smoothdev-web tui was started with:"
+                  printfn "  %s" (invokedCommand argv)
+                  code
   | [ "gui" ]              -> Gui.run ctx.config None ctx.browser
   | [ "gui"; "--port"; p ] -> Gui.run ctx.config (Some(int p)) ctx.browser
   | [ "gui"; "--detach" ]  -> wait (Gui.detach ctx None)

@@ -99,12 +99,12 @@ let run (cfg: Config) =
           :> Task)
         |> ignore
 
-    let toggle (names: string array) startAction stopAction =
+    let toggle (names: string array) (startAction: ActionTarget) (stopAction: ActionTarget) =
       let running =
         State.live cfg.root |> Array.exists (fun e -> Array.contains e.name names)
 
       let action = if running then stopAction else startAction
-      launch action (fun () -> Actions.perform ctx action)
+      launch action.route (fun () -> Actions.perform ctx action)
 
     let render () : IRenderable =
       let rows = Actions.rows cfg
@@ -169,11 +169,11 @@ let run (cfg: Config) =
         while quit.Value.IsNone do
           while Console.KeyAvailable do
             match Char.ToLowerInvariant(Console.ReadKey(true).KeyChar) with
-            | 'd' -> toggle Actions.devNames "dev-start" "dev-stop"
-            | 'p' -> toggle [| "prod" |] "prod-start" "prod-stop"
-            | 'v' -> toggle [| "preview" |] "preview-start" "preview-stop"
-            | 'b' -> launch "dist" (fun () -> Actions.perform ctx "dist")
-            | 'o' -> launch "open" (fun () -> Actions.perform ctx "open")
+            | 'd' -> toggle Actions.devNames ActionTarget.DevStart ActionTarget.DevStop
+            | 'p' -> toggle [| Component.Prod.name |] ActionTarget.ProdStart ActionTarget.ProdStop
+            | 'v' -> toggle [| Component.Preview.name |] ActionTarget.PreviewStart ActionTarget.PreviewStop
+            | 'b' -> launch ActionTarget.Dist.route (fun () -> Actions.perform ctx ActionTarget.Dist)
+            | 'o' -> launch ActionTarget.Open.route (fun () -> Actions.perform ctx ActionTarget.Open)
             | 'l' -> logIndex.Value <- logIndex.Value + 1
             | 'q' -> quit.Value <- Some true
             | 'x' -> quit.Value <- Some false
