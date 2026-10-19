@@ -52,6 +52,40 @@ let clientOf (app: Sites.ViteApp) : Client =
     dist     = app.outDir
     basePath = None }
 
+/// The process listening on port and its working folder (lsof, macOS and Linux), when it can be read.
+let listenerOf (port: int) : (int * string) option =
+  if OperatingSystem.IsWindows() then
+    None
+  else
+    try
+      let run (args: string) =
+        let psi = Diagnostics.ProcessStartInfo("lsof", args, RedirectStandardOutput = true, UseShellExecute = false)
+        use p = nonNull (Diagnostics.Process.Start psi)
+        let text = p.StandardOutput.ReadToEnd()
+        p.WaitForExit()
+        text
+      match run $"-nP -iTCP:{port} -sTCP:LISTEN -t" |> fun t -> t.Split('\n', StringSplitOptions.RemoveEmptyEntries) with
+      | [||] -> None
+      | pids ->
+        let pid = int (pids[0].Trim())
+        let cwd =
+          run $"-a -p {pid} -d cwd -Fn"
+          |> fun t -> t.Split('\n', StringSplitOptions.RemoveEmptyEntries)
+          |> Array.tryFind (fun l -> l.StartsWith "n")
+          |> Option.map (fun l -> l.Substring 1)
+        cwd |> Option.map (fun c -> pid, c)
+    with _ ->
+      None
+
+/// A dev server of this app started by hand: two Fable watchers on one project restore its obj/
+/// in turn (with different SDKs they never agree) and recompile each other forever.
+let warnIfRunsElsewhere ctx (m: Sites.Mount) (preferred: int) =
+  match listenerOf preferred with
+  | Some(pid, cwd) when Path.GetFullPath(cwd).TrimEnd('/') = Path.GetFullPath(m.app.dir).TrimEnd('/') ->
+    let fable = if m.app.fable = Plugin then ": two Fable watchers on one project rebuild each other's obj/" else ""
+    ctx.say Warn $"{m.app.name} already runs outside smoothdev-web (pid {pid}, port {preferred}){fable}; stop it (kill {pid}) and start again for one copy"
+  | _ -> ()
+
 let ensureAppDeps ctx (m: Sites.Mount) =
   task {
     if not (Directory.Exists(m.app.dir </> "node_modules")) then
@@ -108,7 +142,9 @@ let devStart ctx (plan: Sites.Plan) (site: Sites.Site) (frontPreferred: int opti
       let vites = Collections.Generic.List<Sites.Mount * Entry>()
       for m in mountsOf plan site do
         do! ensureAppDeps ctx m
-        let port = pickPort ctx $"Vite ({m.app.name})" (m.app.port |> Option.defaultValue Defaults.vitePort)
+        let preferred = m.app.port |> Option.defaultValue Defaults.vitePort
+        let port = pickPort ctx $"Vite ({m.app.name})" preferred
+        if port <> preferred then warnIfRunsElsewhere ctx m preferred
         let argv =
           viteArgv
             ctx.config.packageManager
@@ -147,6 +183,14 @@ let devStart ctx (plan: Sites.Plan) (site: Sites.Site) (frontPreferred: int opti
       orFail frontReady
       for (m, e) in vites do
         let! ready = Runner.waitReady e (TimeSpan.FromSeconds 180.)
+        // vite-plugin-fable answers a .fs module with an error until its first compilation is done
+        let! compiled =
+          match ready, m.app.fable with
+          | Ok (), Plugin -> Runner.waitLog e [| "[fable]\u001b[39m compiled"; "[fable] compiled" |] (TimeSpan.FromSeconds 300.)
+          | _ -> Threading.Tasks.Task.FromResult(Ok ())
+        match compiled with
+        | Error msg -> ctx.say Warn $"{m.app.name}: {msg}"
+        | Ok () -> ()
         match ready with
         | Ok () -> ctx.say Success $"{m.app.name} ready: http://127.0.0.1:{frontPort}{m.url}"
         | Error msg ->
