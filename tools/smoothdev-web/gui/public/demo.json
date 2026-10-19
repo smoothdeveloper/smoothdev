@@ -1,0 +1,152 @@
+{
+  "root": "~/dev",
+  "demo": true,
+  "scanning": false,
+  "visited": 11,
+  "busy": "",
+  "scan": [
+    {
+      "path": "acme/tools/explorer",
+      "kind": "vite",
+      "note": "acme-explorer"
+    },
+    {
+      "path": "acme/playground",
+      "kind": "vite",
+      "note": "acme-playground"
+    },
+    {
+      "path": "acme/wasm",
+      "kind": "vite",
+      "note": "acme-wasm"
+    },
+    {
+      "path": "acme/docs/Docs.fsproj",
+      "kind": "site",
+      "note": "Nacara site Docs.fsproj"
+    }
+  ],
+  "sites": [
+    {
+      "project": "~/dev/acme/docs/Docs.fsproj",
+      "name": "acme",
+      "baseUrl": "/acme/",
+      "repo": "~/dev/acme",
+      "output": "~/dev/acme/docs/output",
+      "pages": 3,
+      "links": [
+        {
+          "label": "Guide",
+          "route": "guide/introduction/"
+        },
+        {
+          "label": "Playground",
+          "route": "playground/"
+        }
+      ],
+      "reasons": [
+        "Docs.fsproj references Nacara.Core and calls Nacara.run",
+        "base /acme/ from site-root.txt"
+      ],
+      "dev": [
+        "site-nacara              dotnet run --project acme/docs/Docs.fsproj -- watch --port <free, from 8080> --host 127.0.0.1",
+        "site-vite-playground     vite --base /acme/playground/ --port <free, from 5174> --strictPort  (in acme/playground)",
+        "site-vite-explorer       vite --base /acme/explorer/ --port <free, from 5175> --strictPort  (in acme/tools/explorer)",
+        "site-front               one port <free, from 5400>: /acme/playground/, /acme/explorer/ -> Vite, the rest -> the site"
+      ],
+      "mounts": [
+        {
+          "url": "/acme/playground/",
+          "route": "playground/",
+          "kind": "linked",
+          "confidence": "medium",
+          "pageOwned": false,
+          "reasons": [
+            "the navbar links \"Playground\" to /acme/playground/, the app's name",
+            "its vite config has hand-written dev routes (configureServer): the front proxy makes them unnecessary"
+          ],
+          "app": {
+            "dir": "~/dev/acme/playground",
+            "name": "acme-playground",
+            "port": 5174,
+            "fable": "plugin",
+            "library": false,
+            "middleware": true,
+            "outDir": "playground/dist"
+          }
+        },
+        {
+          "url": "/acme/explorer/",
+          "route": "explorer/",
+          "kind": "static-folder",
+          "confidence": "high",
+          "pageOwned": false,
+          "reasons": [
+            "build.outDir ../../docs/public/explorer is in the site's static folder public/: published at /acme/explorer/",
+            "Docs.fsproj builds it first: `pnpm --filter acme-explorer run build`"
+          ],
+          "app": {
+            "dir": "~/dev/acme/tools/explorer",
+            "name": "acme-explorer",
+            "port": 5175,
+            "fable": "none",
+            "library": false,
+            "middleware": false,
+            "outDir": "docs/public/explorer"
+          }
+        }
+      ],
+      "running": [
+        {
+          "name": "site-nacara",
+          "pid": 41001,
+          "port": 8080,
+          "url": "http://127.0.0.1:8080/acme/",
+          "state": "running",
+          "uptime": "12m04s"
+        },
+        {
+          "name": "site-vite-playground",
+          "pid": 41002,
+          "port": 5174,
+          "url": "http://127.0.0.1:5174/acme/playground/",
+          "state": "running",
+          "uptime": "12m03s"
+        },
+        {
+          "name": "site-vite-explorer",
+          "pid": 41003,
+          "port": 5175,
+          "url": "http://127.0.0.1:5175/acme/explorer/",
+          "state": "running",
+          "uptime": "12m03s"
+        },
+        {
+          "name": "site-front",
+          "pid": 41004,
+          "port": 5400,
+          "url": "http://127.0.0.1:5400/acme/",
+          "state": "running",
+          "uptime": "12m02s"
+        }
+      ],
+      "front": "http://127.0.0.1:5400/acme/",
+      "distReady": true
+    }
+  ],
+  "unmounted": [
+    {
+      "app": {
+        "dir": "~/dev/acme/wasm",
+        "name": "acme-wasm",
+        "port": null,
+        "fable": "none",
+        "library": true,
+        "middleware": false,
+        "outDir": "acme/wasm/dist"
+      },
+      "reason": "library build (build.lib): no page to mount"
+    }
+  ],
+  "messages": []
+}

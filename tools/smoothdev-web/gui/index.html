@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>smoothdev-web</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M8 1l7 7-7 7-7-7z' fill='%2358a6ff'/%3E%3C/svg%3E">
+  <script>
+    // the Nacara theme's setting (light, dark or system), so the console matches the site around it
+    (function () {
+      var setting = "system";
+      try { setting = localStorage.getItem("nacara-theme") || "system"; } catch (e) {}
+      var dark = setting === "dark" || (setting === "system" && matchMedia("(prefers-color-scheme: dark)").matches);
+      document.documentElement.dataset.theme = dark ? "dark" : "light";
+    })();
+  </script>
+  <style>
+    html, body { margin: 0; height: 100%; }
+    body { background: #0d1117; }
+    html[data-theme="light"] body { background: #f6f8fa; }
+  </style>
+</head>
+<body>
+  <sd-console></sd-console>
+  <script type="module" src="./src/Console.fs"></script>
+</body>
+</html>
