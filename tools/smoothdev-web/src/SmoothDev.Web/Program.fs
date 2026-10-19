@@ -280,7 +280,12 @@ let run (ctx: Actions.Context) (argv: string array) (command: string list) =
 
 [<EntryPoint>]
 let main argv =
+  if not (OperatingSystem.IsWindows()) then
+    ProcessManagement.Posix.followerArgv <- Runner.selfArgv ()
   match List.ofArray argv with
+  | [ "__follow"; log ] when not (OperatingSystem.IsWindows()) ->
+    ProcessManagement.Posix.copyAll 0 log
+    0
   | "__front" :: port :: siteBase :: routes ->
     let parsed = routes |> List.map FrontProxy.parseRoute
     match parsed |> List.tryPick (function Error e -> Some e | Ok _ -> None) with

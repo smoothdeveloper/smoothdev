@@ -206,6 +206,9 @@ module Posix =
     [<DllImport("libc")>]
     extern int close(int fd)
 
+    [<DllImport("libc")>]
+    extern int fcntl(int fd, int cmd, int arg)
+
   let SIGHUP = 1
   let SIGINT = 2
   let SIGQUIT = 3
@@ -221,6 +224,13 @@ module Posix =
   let POSIX_SPAWN_SETPGROUP = 0x2s
   let POSIX_SPAWN_SETSIGDEF = 0x4s
   let POSIX_SPAWN_SETSIGMASK = 0x8s
+  let F_SETFD = 2
+  let FD_CLOEXEC = 1
+
+  /// argv prefix that runs this tool again (set by the program): the pty of a component is then read by
+  /// a `__follow` process of its own, which outlives the command that started the component. Empty: a
+  /// thread of this process reads it (it stops when this process exits).
+  let mutable followerArgv: string array = [||]
 
   let lastErrno () = Marshal.GetLastPInvokeError()
 
@@ -242,27 +252,63 @@ module Posix =
 
   /// Copies the pty master onto the log as bytes arrive, so a build shows up while it is still running.
   /// A pipe would stay block-buffered inside `dotnet`; a pty makes it flush each line.
+  /// Appends what fd yields to log until it ends (a pty master ends once every writer closed the slave).
+  let copyAll (fd: int) (log: string) =
+    try
+      use fs = new FileStream(log, FileMode.Append, FileAccess.Write, FileShare.ReadWrite)
+      let buf = Array.zeroCreate 8192
+      let mutable n = 1
+
+      while n > 0 do
+        n <- Native.read (fd, buf, buf.Length)
+
+        if n > 0 then
+          fs.Write(buf, 0, n)
+          fs.Flush()
+    finally
+      Native.close fd |> ignore
+
   let follow master log =
-    let thread =
-      Thread(
-        fun () ->
-          try
-            use fs = new FileStream(log, FileMode.Append, FileAccess.Write, FileShare.ReadWrite)
-            let buf = Array.zeroCreate 8192
-            let mutable n = 1
-
-            while n > 0 do
-              n <- Native.read (master, buf, buf.Length)
-
-              if n > 0 then
-                fs.Write(buf, 0, n)
-                fs.Flush()
-          finally
-            Native.close master |> ignore
-      )
-
+    let thread = Thread(fun () -> copyAll master log)
     thread.IsBackground <- true
     thread.Start()
+
+  /// Starts `followerArgv __follow <log>` in a process group of its own, reading master as its stdin.
+  /// A reader in this process would stop with it, and a full pty blocks the component's next write.
+  let private spawnFollower (master: int) (log: string) (env: string array) (cwd: string) =
+    if followerArgv.Length = 0 then
+      false
+    else
+      let argv = Array.append followerArgv [| "__follow"; log |]
+      let attr = Marshal.AllocHGlobal 1024
+      let actions = Marshal.AllocHGlobal 1024
+      let signals = Marshal.AllocHGlobal 256
+      let argvPtr = allocStrings argv
+      let envPtr = allocStrings env
+
+      try
+        Native.posix_spawnattr_init attr |> ignore
+        Native.posix_spawnattr_setflags (attr, POSIX_SPAWN_SETPGROUP ||| POSIX_SPAWN_SETSIGDEF ||| POSIX_SPAWN_SETSIGMASK) |> ignore
+        Native.posix_spawnattr_setpgroup (attr, 0) |> ignore
+        Native.sigemptyset signals |> ignore
+        Native.posix_spawnattr_setsigmask (attr, signals) |> ignore
+        [| SIGINT; SIGQUIT; SIGPIPE; SIGTERM; SIGCHLD |] |> Array.iter (fun s -> Native.sigaddset (signals, s) |> ignore)
+        Native.posix_spawnattr_setsigdefault (attr, signals) |> ignore
+        Native.posix_spawn_file_actions_init actions |> ignore
+        Native.posix_spawn_file_actions_adddup2 (actions, master, 0) |> ignore
+        Native.posix_spawn_file_actions_addopen (actions, 1, "/dev/null", O_WRONLY, 0) |> ignore
+        Native.posix_spawn_file_actions_adddup2 (actions, 1, 2) |> ignore
+        Native.posix_spawn_file_actions_addchdir_np (actions, cwd) |> ignore
+        let mutable pid = 0
+        Native.posix_spawnp (&pid, argv[0], actions, attr, argvPtr, envPtr) = 0
+      finally
+        Native.posix_spawn_file_actions_destroy actions |> ignore
+        Native.posix_spawnattr_destroy attr |> ignore
+        Marshal.FreeHGlobal attr
+        Marshal.FreeHGlobal actions
+        Marshal.FreeHGlobal signals
+        freeStrings argvPtr argv.Length
+        freeStrings envPtr env.Length
 
   /// Starts argv[0] (looked up on PATH) as the leader of a new process group, in cwd, with stdin from
   /// /dev/null and stdout + stderr appended to log. Signal dispositions and mask are reset to the defaults
@@ -305,7 +351,10 @@ module Posix =
       Marshal.FreeHGlobal win
 
       if pty then
-        follow master log
+        // only the component (as its stdout and stderr) and its follower (as stdin) keep these open:
+        // a pty master left open in another child would never be read, and its writer would block
+        Native.fcntl (master, F_SETFD, FD_CLOEXEC) |> ignore
+        Native.fcntl (slave, F_SETFD, FD_CLOEXEC) |> ignore
         Native.posix_spawn_file_actions_adddup2 (actions, slave, 1) |> ignore
         Native.posix_spawn_file_actions_adddup2 (actions, slave, 2) |> ignore
       else
@@ -319,6 +368,11 @@ module Posix =
 
       if pty then
         Native.close slave |> ignore
+
+        if rc = 0 && spawnFollower master log env cwd then
+          Native.close master |> ignore
+        elif rc = 0 then
+          follow master log
 
       if rc = 0 then
         Ok pid
