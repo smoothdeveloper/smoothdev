@@ -31,6 +31,11 @@ Commands:
   gui [--port N] [--detach]  web GUI served by the tool on 127.0.0.1; --detach runs it in the background
                              (tracked like the other components: `stop` or the GUI's own stop ends it)
   config [show|init]         print the resolved config, or write smoothdev.web.json from detection
+  site [plan] [--json]       documentation sites (Nacara) under this folder, the Vite apps they host, and why
+  site dev [--port N]        the site's dev server, each mounted Vite app under its base, one front port
+  site stop|status           stop / list what `site dev` and `site preview` started
+  site dist                  the site's build, with each mounted app built into its route (.smoothdev/web/site-dist)
+  site preview               serve the site dist as a static host would
 
 Options:
   --dir <path>    the app folder (default: current folder; the nearest smoothdev.web.json above it wins)
@@ -182,6 +187,43 @@ let rec globals (args: string list) dir browser rest =
   | a :: tail              -> globals tail dir browser (a :: rest)
   | []                     -> dir, browser, List.rev rest
 
+/// `site dev|stop|status|dist|preview`: the first site the plan finds under dir.
+let site (dir: string) (browser: bool) (sub: string list) =
+  let plan = Sites.plan dir
+  let ctx: Actions.Context =
+    { config = SiteActions.configFor plan; say = say; echo = echo; browser = browser }
+  let wait (t: Threading.Tasks.Task<Result<'a, string>>) =
+    match t.GetAwaiter().GetResult() with
+    | Ok _ -> 0
+    | Error _ -> 1
+  let withSite f =
+    match plan.sites |> Array.tryHead with
+    | None ->
+      say Fail $"no Nacara site under {dir}"
+      1
+    | Some s ->
+      if plan.sites.Length > 1 then
+        say Warn $"{plan.sites.Length} sites found: using {s.name} ({s.project})"
+      f s
+  match sub with
+  | [ "dev" ]
+  | [ "dev"; "start" ] -> withSite (fun s -> wait (SiteActions.devStart ctx plan s None))
+  | [ "dev"; "--port"; p ]
+  | [ "dev"; "start"; "--port"; p ] -> withSite (fun s -> wait (SiteActions.devStart ctx plan s (Some(int p))))
+  | [ "stop" ]
+  | [ "dev"; "stop" ] -> wait (SiteActions.stop ctx)
+  | [ "dist" ] -> withSite (fun s -> wait (SiteActions.dist ctx plan s))
+  | [ "preview" ] -> withSite (fun s -> wait (SiteActions.preview ctx plan s))
+  | [ "status" ] ->
+    let live = State.live plan.root |> Array.filter (fun e -> e.name.StartsWith "site-")
+    if live.Length = 0 then printfn "nothing running"
+    for e in live do
+      printfn "%-24s pid %-6d %s" e.name e.pid e.url
+    0
+  | _ ->
+    eprintf $"%s{usage}"
+    2
+
 let rec logOptions (args: string list) names follow count =
   match args with
   | ("-f" | "--follow") :: tail     -> logOptions tail names true count
@@ -233,6 +275,14 @@ let run (ctx: Actions.Context) (argv: string array) (command: string list) =
 [<EntryPoint>]
 let main argv =
   match List.ofArray argv with
+  | "__front" :: port :: siteBase :: routes ->
+    let parsed = routes |> List.map FrontProxy.parseRoute
+    match parsed |> List.tryPick (function Error e -> Some e | Ok _ -> None) with
+    | Some e ->
+      eprintfn "%s" e
+      2
+    | None ->
+      FrontProxy.run (int port) siteBase [| for r in parsed do match r with Ok r -> yield r | Error _ -> () |]
   | [ "__serve-static"; dir; urlBase; port ] ->
     StaticServer.run dir urlBase (int port)
   | [ "--version" ] ->
@@ -284,6 +334,20 @@ let main argv =
         Config.saveScanCache dir visited (fresh.ToArray())
         eprintfn "done  %d folders" visited
         0
+    | [ "site" ]
+    | [ "site"; "plan" ] ->
+      let plan = Sites.plan dir
+      printf "%s" (Sites.describe plan)
+      for site in plan.sites do
+        printfn "dev wiring for %s (`smoothdev-web site dev`):" site.name
+        for line in SiteActions.devLines plan site do
+          printfn "  %s" line
+      0
+    | [ "site"; "--json" ]
+    | [ "site"; "plan"; "--json" ] ->
+      printfn "%s" (Sites.toJson (Sites.plan dir))
+      0
+    | "site" :: sub -> site dir browser sub
     | [ "scan"; "tui" ] -> Tui.scan dir
     | [ "scan"; "gui" ] -> Gui.scan dir None
     | [ "scan"; "gui"; "--port"; port ] -> Gui.scan dir (Some(int port))

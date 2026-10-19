@@ -23,12 +23,15 @@
     <Compile Include="Ports.fs" />
     <Compile Include="Config.fsi" />
     <Compile Include="Config.fs" />
+    <Compile Include="Sites.fs" />
     <Compile Include="ProcessManagement.fs" />
     <Compile Include="State.fs" />
     <Compile Include="DocLink.fs" />
     <Compile Include="Runner.fs" />
     <Compile Include="StaticServer.fs" />
+    <Compile Include="FrontProxy.fs" />
     <Compile Include="Actions.fs" />
+    <Compile Include="SiteActions.fs" />
     <Compile Include="Tui.fs" />
     <Compile Include="Gui.fs" />
     <Compile Include="Program.fs" />

@@ -614,7 +614,196 @@ let guiPage =
       }
     ]
 
-let tests = testList "smoothdev.web" [ ports; config; tracking; staticServer; guiPage ]
+
+/// A Nacara site in docs/ (base from site-root.txt, static folder public/) and Vite apps around it.
+let siteFixture (dir: TempDir) =
+  Directory.CreateDirectory(Path.Combine(dir.path, ".git")) |> ignore
+  dir.write "docs/Docs.fsproj" """<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup><Compile Include="Site.fs" /></ItemGroup>
+  <Target Name="BuildExplorer" BeforeTargets="BeforeBuild">
+    <Exec Command="pnpm --filter demo-explorer run build" WorkingDirectory=".." />
+  </Target>
+</Project>""" |> ignore
+  dir.write "docs/paket.references" "FSharp.Core\nNacara.Core\n" |> ignore
+  dir.write "docs/site-root.txt" "https://example.org\n/demo/\n" |> ignore
+  dir.write "docs/Site.fs" """module Docs.Site
+let theme =
+  Theme.defaults
+  |> Theme.navbar
+    [ NavbarSection("Guide", "guide", "/guide/introduction/")
+      NavbarLink("Playground", "/playground/") ]
+let site =
+  Site.create "demo"
+  |> Site.baseUrl baseUrl
+  |> Site.output "output"
+  |> Site.staticFiles "public"
+  |> Site.collection (Theme.docs theme "content")
+[<EntryPoint>]
+let main argv = Nacara.run site argv""" |> ignore
+  dir.write "docs/content/index.md" "# home" |> ignore
+  dir.write "docs/content/guide/introduction.md" "# intro" |> ignore
+  dir.write "docs/content/tools/web/index.md" "# web tool" |> ignore
+  // linked by the navbar, with hand-written dev routes
+  dir.write "playground/package.json" """{ "name": "demo-playground", "devDependencies": { "vite": "8.0.0", "vite-plugin-fable": "0.5.2" } }""" |> ignore
+  dir.write "playground/index.html" "<script type=module src=./src/App.fs></script>" |> ignore
+  dir.write "playground/vite.config.js" """export default { plugins: [fable(), { configureServer(server) {} }], server: { port: 5174, strictPort: true } }""" |> ignore
+  // built into the site's static folder
+  dir.write "tools/explorer/package.json" """{ "name": "demo-explorer", "devDependencies": { "vite": "8.0.0" } }""" |> ignore
+  dir.write "tools/explorer/index.html" "<p>explorer</p>" |> ignore
+  dir.write "tools/explorer/vite.config.js" """export default { base: "./", server: { port: 5175 }, build: { outDir: "../../docs/public/explorer", emptyOutDir: true } }""" |> ignore
+  // a page app under a content section, nothing else says where it goes
+  dir.write "tools/web/gui/package.json" """{ "name": "web-gui", "devDependencies": { "vite": "8.0.0" } }""" |> ignore
+  dir.write "tools/web/gui/index.html" "<p>gui</p>" |> ignore
+  // a library build
+  dir.write "wasm/package.json" """{ "name": "demo-wasm", "devDependencies": { "vite": "8.0.0" } }""" |> ignore
+  dir.write "wasm/vite.config.mts" """export default { build: { outDir: "../out/wasm", lib: { entry: { processor: "./P.fs" }, formats: ["es"] } } }""" |> ignore
+
+let sites =
+  testList
+    "sites"
+    [
+      test "a Nacara site: base, output, static folder, navbar, pages, build hooks" {
+        use dir = new TempDir()
+        siteFixture dir
+        let plan = Sites.plan dir.path
+        Expect.equal plan.sites.Length 1 "one site"
+        let s = plan.sites[0]
+        Expect.equal s.name "demo" "Site.create"
+        Expect.equal s.baseUrl "/demo/" "base from site-root.txt"
+        Expect.equal s.output (Path.Combine(dir.path, "docs", "output")) "output"
+        Expect.equal s.statics (Some(Path.Combine(dir.path, "docs", "public"))) "static folder"
+        Expect.contains s.links ("Playground", "playground/") "navbar link"
+        Expect.contains s.pages "guide/introduction/" "content page route"
+        Expect.contains s.pages "" "home page"
+        Expect.equal s.hooks [| "pnpm --filter demo-explorer run build" |] "Exec commands"
+      }
+
+      test "mounts: static folder, navbar link, content section convention; a library is not mounted" {
+        use dir = new TempDir()
+        siteFixture dir
+        let plan = Sites.plan dir.path
+        let byDir d = plan.mounts |> Array.find (fun m -> m.app.dir = Path.Combine(dir.path, d))
+        let explorer = byDir "tools/explorer"
+        Expect.equal (explorer.url, explorer.kind, explorer.confidence) ("/demo/explorer/", Sites.StaticFolder, Sites.High) "explorer"
+        Expect.isTrue (explorer.reasons |> Array.exists (fun r -> r.Contains "--filter demo-explorer")) "the build hook is a reason"
+        let playground = byDir "playground"
+        Expect.equal (playground.url, playground.kind, playground.confidence) ("/demo/playground/", Sites.Linked, Sites.Medium) "playground"
+        Expect.equal playground.app.port (Some 5174) "server.port"
+        Expect.isTrue playground.app.middleware "configureServer"
+        Expect.isFalse playground.pageOwned "no content page at playground/"
+        let gui = byDir "tools/web/gui"
+        Expect.equal (gui.url, gui.kind, gui.confidence) ("/demo/tools/web/gui/", Sites.Convention, Sites.Low) "gui under the tools/web section"
+        let wasm = plan.unmounted |> Array.exactlyOne
+        Expect.stringContains wasm.reason "library" "wasm is a library build"
+      }
+
+      test "a content page at the app's route keeps the page in dist" {
+        use dir = new TempDir()
+        siteFixture dir
+        dir.write "docs/content/playground/index.md" "<div id=root></div>" |> ignore
+        let plan = Sites.plan dir.path
+        let playground = plan.mounts |> Array.find (fun m -> m.app.name = "demo-playground")
+        Expect.isTrue playground.pageOwned "page owned"
+      }
+
+      test "smoothdev.site.json sets a route or drops an app" {
+        use dir = new TempDir()
+        siteFixture dir
+        dir.write "smoothdev.site.json" """{ "apps": { "tools/web/gui": { "route": "/console" }, "playground": { "mount": false } } }""" |> ignore
+        let plan = Sites.plan dir.path
+        let gui = plan.mounts |> Array.find (fun m -> m.app.name = "web-gui")
+        Expect.equal (gui.url, gui.kind) ("/demo/console/", Sites.Configured) "route from the file"
+        Expect.isTrue (plan.unmounted |> Array.exists (fun u -> u.app.name = "demo-playground")) "playground dropped"
+      }
+
+      test "no site: apps are listed, not mounted" {
+        use dir = new TempDir()
+        dir.write "web/package.json" """{ "name": "w", "devDependencies": { "vite": "8.0.0" } }""" |> ignore
+        dir.write "web/index.html" "<p/>" |> ignore
+        let plan = Sites.plan dir.path
+        Expect.isEmpty plan.sites "no site"
+        Expect.equal (plan.unmounted |> Array.map _.reason) [| "no Nacara site found" |] "reason"
+      }
+
+      test "a project that does not call Nacara.run is not a site" {
+        use dir = new TempDir()
+        dir.write "x/X.fsproj" """<Project><ItemGroup><PackageReference Include="Nacara.Core" /><Compile Include="A.fs" /></ItemGroup></Project>""" |> ignore
+        dir.write "x/A.fs" "module A" |> ignore
+        Expect.isEmpty (Sites.plan dir.path).sites "no Nacara.run"
+      }
+
+      test "plan JSON names sites, mounts and reasons" {
+        use dir = new TempDir()
+        siteFixture dir
+        let json = Sites.toJson (Sites.plan dir.path)
+        use doc = Text.Json.JsonDocument.Parse json
+        let mounts = doc.RootElement.GetProperty("mounts")
+        Expect.equal (mounts.GetArrayLength()) 3 "three mounts"
+        Expect.stringContains json "\"kind\": \"static-folder\"" "kind"
+      }
+    ]
+
+let front =
+  testList
+    "front proxy"
+    [
+      let routes =
+        [| "/demo/app/=http://127.0.0.1:5174"; "/=http://127.0.0.1:8080" |]
+        |> Array.map (FrontProxy.parseRoute >> ok)
+
+      test "longest prefix wins; the site is the fallback" {
+        Expect.equal (FrontProxy.pick routes "/demo/app/src/App.fs.js?t=1").Value.port 5174 "app"
+        Expect.equal (FrontProxy.pick routes "/demo/guide/").Value.port 8080 "site"
+      }
+
+      test "redirects: / to the base, an app without its slash" {
+        Expect.equal (FrontProxy.decide routes "/demo/" "/") (FrontProxy.Redirect "/demo/") "root"
+        Expect.equal (FrontProxy.decide routes "/demo/" "/demo/app?x=1") (FrontProxy.Redirect "/demo/app/?x=1") "slash"
+        Expect.equal (FrontProxy.decide routes "/demo/" "/__front") FrontProxy.Health "health"
+      }
+
+      test "Connection: close unless upgrading" {
+        let head = "GET / HTTP/1.1\r\nHost: x\r\nConnection: keep-alive\r\n\r\n"
+        Expect.equal (FrontProxy.rewriteHead head) "GET / HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n" "close"
+        let ws = "GET /ws HTTP/1.1\r\nHost: x\r\nConnection: Upgrade\r\nUpgrade: websocket\r\n\r\n"
+        Expect.equal (FrontProxy.rewriteHead ws) ws "upgrade untouched"
+      }
+
+      testTask "forwards to two upstreams on one port" {
+        let serve (body: string) =
+          let port = Ports.pick [||] 47100
+          let listener = new HttpListener()
+          listener.Prefixes.Add $"http://127.0.0.1:{port}/"
+          listener.Start()
+          Tasks.Task.Run(fun () ->
+            while listener.IsListening do
+              let c = listener.GetContext()
+              let bytes = Text.Encoding.UTF8.GetBytes $"{body} {c.Request.RawUrl}"
+              c.Response.OutputStream.Write(bytes, 0, bytes.Length)
+              c.Response.Close()) |> ignore
+          port
+        let site = serve "site"
+        let app = serve "app"
+        let frontPort = Ports.pick [| site; app |] 47200
+        let routes =
+          [| $"/demo/app/=http://127.0.0.1:{app}"; $"/=http://127.0.0.1:{site}" |]
+          |> Array.map (FrontProxy.parseRoute >> ok)
+        Threading.Thread((fun () -> FrontProxy.run frontPort "/demo/" routes |> ignore), IsBackground = true).Start()
+        let client = new Net.Http.HttpClient()
+        let mutable up = false
+        while not up do
+          try
+            let! _ = client.GetStringAsync $"http://127.0.0.1:{frontPort}/__front"
+            up <- true
+          with _ -> do! Tasks.Task.Delay 50
+        let! a = client.GetStringAsync $"http://127.0.0.1:{frontPort}/demo/app/x.js"
+        let! b = client.GetStringAsync $"http://127.0.0.1:{frontPort}/demo/guide/"
+        Expect.equal a "app /demo/app/x.js" "app route"
+        Expect.equal b "site /demo/guide/" "site route"
+      }
+    ]
+
+let tests = testList "smoothdev.web" [ ports; config; tracking; staticServer; guiPage; sites; front ]
 
 [<EntryPoint>]
 let main argv = runTestsWithCLIArgs [] argv tests
