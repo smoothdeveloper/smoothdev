@@ -1,6 +1,6 @@
 // Build entry for smoothdev.web (Partas.Build). From this folder:
 //   dotnet fsi build.fsx -- --help
-//   dotnet fsi build.fsx -- check      tools + paket restore, build, tests
+//   dotnet fsi build.fsx -- check      tools + paket restore, the console page, build, tests
 //   dotnet fsi build.fsx -- test       tests only
 //   dotnet fsi build.fsx -- pack       the dotnet tool package, into artifacts/
 //   dotnet fsi build.fsx -- install    pack, then install or replace the global tool
@@ -23,6 +23,14 @@ module Stages =
       workingDir repo
       run "dotnet tool restore"
       run "dotnet paket restore"
+    }
+
+  /// The console page `scan gui` serves (gui/, Lit in F#): built before the tool, which ships gui/dist.
+  let gui =
+    stage "gui" {
+      workingDir (Path.Combine(here, "gui"))
+      run "pnpm install --frozen-lockfile"
+      run "pnpm run build"
     }
 
   let build =
@@ -95,6 +103,7 @@ do
       command "check" {
         description "Restore, build and tests"
         Stages.restore
+        Stages.gui
         Stages.build
         Stages.test
       }
@@ -107,12 +116,14 @@ do
       command "pack" {
         description "Pack the dotnet tool into artifacts/"
         Stages.restore
+        Stages.gui
         Stages.pack
       }
 
       command "install" {
         description "Pack and install the global tool (replaces the current one)"
         Stages.restore
+        Stages.gui
         Stages.pack
         Stages.install
       }

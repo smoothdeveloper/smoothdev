@@ -187,7 +187,6 @@ let rec globals (args: string list) dir browser rest =
   | a :: tail              -> globals tail dir browser (a :: rest)
   | []                     -> dir, browser, List.rev rest
 
-/// `site dev|stop|status|dist|preview`: the first site the plan finds under dir.
 /// `site dev|stop|status|dist|preview`: the first site the plan finds under dir (or `--site <name>`).
 let site (dir: string) (browser: bool) (sub: string list) =
   let plan = Sites.plan dir
