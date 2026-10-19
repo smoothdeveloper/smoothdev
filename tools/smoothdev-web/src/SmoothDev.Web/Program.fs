@@ -188,41 +188,48 @@ let rec globals (args: string list) dir browser rest =
   | []                     -> dir, browser, List.rev rest
 
 /// `site dev|stop|status|dist|preview`: the first site the plan finds under dir.
+/// `site dev|stop|status|dist|preview`: the first site the plan finds under dir (or `--site <name>`).
 let site (dir: string) (browser: bool) (sub: string list) =
   let plan = Sites.plan dir
-  let ctx: Actions.Context =
-    { config = SiteActions.configFor plan; say = say; echo = echo; browser = browser }
+  let named, sub =
+    match sub with
+    | "--site" :: name :: rest -> Some name, rest
+    | _ -> None, sub
   let wait (t: Threading.Tasks.Task<Result<'a, string>>) =
     match t.GetAwaiter().GetResult() with
     | Ok _ -> 0
     | Error _ -> 1
-  let withSite f =
-    match plan.sites |> Array.tryHead with
-    | None ->
-      say Fail $"no Nacara site under {dir}"
-      1
-    | Some s ->
-      if plan.sites.Length > 1 then
-        say Warn $"{plan.sites.Length} sites found: using {s.name} ({s.project})"
-      f s
-  match sub with
-  | [ "dev" ]
-  | [ "dev"; "start" ] -> withSite (fun s -> wait (SiteActions.devStart ctx plan s None))
-  | [ "dev"; "--port"; p ]
-  | [ "dev"; "start"; "--port"; p ] -> withSite (fun s -> wait (SiteActions.devStart ctx plan s (Some(int p))))
-  | [ "stop" ]
-  | [ "dev"; "stop" ] -> wait (SiteActions.stop ctx)
-  | [ "dist" ] -> withSite (fun s -> wait (SiteActions.dist ctx plan s))
-  | [ "preview" ] -> withSite (fun s -> wait (SiteActions.preview ctx plan s))
-  | [ "status" ] ->
-    let live = State.live plan.root |> Array.filter (fun e -> e.name.StartsWith "site-")
-    if live.Length = 0 then printfn "nothing running"
-    for e in live do
-      printfn "%-24s pid %-6d %s" e.name e.pid e.url
-    0
-  | _ ->
-    eprintf $"%s{usage}"
-    2
+  let chosen =
+    match named with
+    | Some n -> plan.sites |> Array.tryFind (fun s -> s.name = n)
+    | None -> plan.sites |> Array.tryHead
+  match chosen with
+  | None ->
+    say Fail $"no Nacara site under {dir}"
+    1
+  | Some s ->
+    if plan.sites.Length > 1 && named.IsNone then
+      say Warn $"{plan.sites.Length} sites found: using {s.name} ({s.project}); choose with --site <name>"
+    let ctx: Actions.Context =
+      { config = SiteActions.configFor s; say = say; echo = echo; browser = browser }
+    match sub with
+    | [ "dev" ]
+    | [ "dev"; "start" ] -> wait (SiteActions.devStart ctx plan s None)
+    | [ "dev"; "--port"; p ]
+    | [ "dev"; "start"; "--port"; p ] -> wait (SiteActions.devStart ctx plan s (Some(int p)))
+    | [ "stop" ]
+    | [ "dev"; "stop" ] -> wait (SiteActions.stop ctx)
+    | [ "dist" ] -> wait (SiteActions.dist ctx plan s)
+    | [ "preview" ] -> wait (SiteActions.preview ctx plan s)
+    | [ "status" ] ->
+      let live = State.live s.repo |> Array.filter (fun e -> e.name.StartsWith "site-")
+      if live.Length = 0 then printfn "nothing running"
+      for e in live do
+        printfn "%-24s pid %-6d %s" e.name e.pid e.url
+      0
+    | _ ->
+      eprintf $"%s{usage}"
+      2
 
 let rec logOptions (args: string list) names follow count =
   match args with

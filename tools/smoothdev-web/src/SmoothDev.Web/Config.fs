@@ -110,6 +110,13 @@ let isViteApp dir =
 let isWebSdk project =
   (readText project).Contains "Microsoft.NET.Sdk.Web"
 
+/// A documentation site written with Nacara: the project references Nacara.Core (paket or PackageReference).
+/// `Sites.readSite` reads the rest.
+let isNacaraSite (project: string) =
+  let dir = Path.GetDirectoryName project |> nonNull
+  project.EndsWith ".fsproj"
+  && ((readText project).Contains "Nacara.Core" || (readText (dir </> "paket.references")).Contains "Nacara.Core")
+
 let skipDirs =
   set
     [
@@ -644,6 +651,11 @@ let scanVisit root (ct: Threading.CancellationToken) onProgress onRow =
               { path = relTo root project
                 kind = "server"
                 note = nameOf project }
+          elif isNacaraSite project then
+            onRow
+              { path = relTo root project
+                kind = "site"
+                note = $"Nacara site {nameOf project}" }
 
       if not ct.IsCancellationRequested then
         for sub in Directory.GetDirectories dir do
@@ -735,6 +747,9 @@ let private rebase cachedRoot requested (rows: ScanRow array) =
     else
       Some { row with path = if rel = "." then "" else rel })
 
+/// How long the cache of a parent folder replaces the walk of a folder inside it.
+let ancestorCacheAge = TimeSpan.FromMinutes 30.
+
 /// Rows from the cache of root, or from the nearest ancestor cache that already covers root.
 let scanFromCache root =
   let requested = Path.GetFullPath root
@@ -743,10 +758,13 @@ let scanFromCache root =
   | null -> None
   | dir when not (Directory.Exists dir) -> None
   | dir ->
+    // an ancestor's cache stands in for a walk only while it is recent: an old one misses what was added since
+    let recent file = DateTime.UtcNow - File.GetLastWriteTimeUtc(file: string) < ancestorCacheAge
     Directory.GetFiles(dir, "*.json")
-    |> Array.choose readCacheFile
-    |> Array.filter (fun (cachedRoot, _) ->
-      requested = cachedRoot || requested.StartsWith(cachedRoot.TrimEnd('/') + "/"))
+    |> Array.choose (fun file -> readCacheFile file |> Option.map (fun (r, rows) -> r, rows, recent file))
+    |> Array.filter (fun (cachedRoot, _, fresh) ->
+      requested = cachedRoot || (fresh && requested.StartsWith(cachedRoot.TrimEnd('/') + "/")))
+    |> Array.map (fun (r, rows, _) -> r, rows)
     |> Array.sortByDescending (fun (cachedRoot, _) -> cachedRoot.Length)
     |> Array.tryHead
     |> Option.map (fun (cachedRoot, rows) ->

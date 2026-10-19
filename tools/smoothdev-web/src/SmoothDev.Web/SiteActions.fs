@@ -18,12 +18,13 @@ module Defaults =
   let vitePort    = 5173
   let previewPort = 4180
 
-/// A Config for the folder the plan was made in: the state file and the logs live there.
-let configFor (plan: Sites.Plan) : Config =
-  { name           = plan.sites |> Array.tryHead |> Option.map _.name |> Option.defaultValue (Config.nameOf plan.root)
-    root           = plan.root
+/// A Config for the site's repository: the state file and the logs of `site dev` live there, wherever
+/// the plan was made from (a scan of a parent folder finds the same processes).
+let configFor (site: Sites.Site) : Config =
+  { name           = site.name
+    root           = site.repo
     file           = None
-    packageManager = Config.detectPm [| plan.root |]
+    packageManager = Config.detectPm [| site.repo |]
     client         = None
     server         = None
     previewPort    = Defaults.previewPort
@@ -72,7 +73,7 @@ let mountsOf (plan: Sites.Plan) (site: Sites.Site) =
 /// What `site dev` would start, one line each (for `site plan` and the GUI).
 let devLines (plan: Sites.Plan) (site: Sites.Site) =
   [|
-    $"{siteName,-24} dotnet run --project {Path.GetRelativePath(plan.root, site.project)} -- watch --port <free, from {Defaults.sitePort}>"
+    $"{siteName,-24} dotnet run --project {Path.GetRelativePath(plan.root, site.project)} -- watch --port <free, from {Defaults.sitePort}> --host 127.0.0.1"
     for m in mountsOf plan site do
       $"{viteName m,-24} vite --base {m.url} --port <free, from {m.app.port |> Option.defaultValue Defaults.vitePort}> --strictPort  (in {Path.GetRelativePath(plan.root, m.app.dir)})"
     let apps = String.Join(", ", [| for m in mountsOf plan site -> m.url |])
@@ -95,7 +96,7 @@ let devStart ctx (plan: Sites.Plan) (site: Sites.Site) (frontPreferred: int opti
         Runner.start
           root
           siteName
-          [| "dotnet"; "run"; "--project"; site.project; "--"; "watch"; "--port"; string sitePort |]
+          [| "dotnet"; "run"; "--project"; site.project; "--"; "watch"; "--port"; string sitePort; "--host"; "127.0.0.1" |]
           [| "DOTNET_NOLOGO", "1" |]
           site.dir
           sitePort
@@ -173,7 +174,7 @@ let stop ctx =
     return! stopNames ctx (Array.rev order)
   }
 
-let distDir (plan: Sites.Plan) = plan.root </> ".smoothdev" </> "web" </> "site-dist"
+let distDir (site: Sites.Site) = site.repo </> ".smoothdev" </> "web" </> "site-dist"
 
 let rec private copyTree (src: string) (dst: string) =
   Directory.CreateDirectory dst |> ignore
@@ -187,7 +188,7 @@ let rec private copyTree (src: string) (dst: string) =
 let dist ctx (plan: Sites.Plan) (site: Sites.Site) =
   guarded ctx (fun () ->
     task {
-      let out = distDir plan
+      let out = distDir site
       let! built =
         once ctx "site-build" [| "dotnet"; "run"; "--project"; site.project; "--"; "build" |] [| "DOTNET_NOLOGO", "1" |] site.dir
       orFail built
@@ -196,7 +197,7 @@ let dist ctx (plan: Sites.Plan) (site: Sites.Site) =
       if Directory.Exists out then
         Directory.Delete(out, true)
       copyTree site.output out
-      ctx.say Info $"site copied from {Path.GetRelativePath(plan.root, site.output)} into {Path.GetRelativePath(plan.root, out)}"
+      ctx.say Info $"site copied from {Path.GetRelativePath(site.repo, site.output)} into {Path.GetRelativePath(site.repo, out)}"
       for m in mountsOf plan site do
         if m.pageOwned then
           ctx.say Info $"{m.app.name}: {m.route} is a page of the site, kept as the site built it"
@@ -219,7 +220,7 @@ let dist ctx (plan: Sites.Plan) (site: Sites.Site) =
 let preview ctx (plan: Sites.Plan) (site: Sites.Site) =
   task {
     let root = ctx.config.root
-    let out = distDir plan
+    let out = distDir site
     match State.find root previewName with
     | Some e ->
       ctx.say Info $"the site preview already runs on {e.url}"
