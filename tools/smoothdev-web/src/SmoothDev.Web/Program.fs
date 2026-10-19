@@ -24,7 +24,7 @@ Commands:
                              without a target: dev, else prod, else preview, else dist
   logs [name...] [-f] [-n N] print the last N lines (default 40) of component logs; -f follows them
   stop                       stop everything this app runs
-  scan [tui|gui]            list Vite apps, Web SDK projects and smoothdev.web.json files under this folder;
+  scan [tui|gui [--classic]] list Vite apps, Web SDK projects and smoothdev.web.json files under this folder;
                             tui and gui fold the folder tree and open an app with the same controls as `tui` or `gui` in that folder
                              tui or gui show hits as the walk finds them
   tui                        terminal UI
@@ -356,8 +356,15 @@ let main argv =
       0
     | "site" :: sub -> site dir browser sub
     | [ "scan"; "tui" ] -> Tui.scan dir
-    | [ "scan"; "gui" ] -> Gui.scan dir None
-    | [ "scan"; "gui"; "--port"; port ] -> Gui.scan dir (Some(int port))
+    | "scan" :: "gui" :: rest ->
+      let classic = List.contains "--classic" rest
+      let port =
+        match rest |> List.filter ((<>) "--classic") with
+        | [ "--port"; p ] -> Some(int p)
+        | _ -> None
+      match WebConsole.assets () with
+      | Some assets when not classic -> WebConsole.run dir assets port browser
+      | _ -> Gui.scan dir port
     | _ when not (OperatingSystem.IsMacOS() || OperatingSystem.IsLinux() || OperatingSystem.IsWindows()) ->
       say Fail "smoothdev-web runs on macOS, Linux and Windows"
       1
