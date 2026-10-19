@@ -21,6 +21,7 @@ let theme =
       NavbarDynamicWidget Search.trigger
       NavbarIcon("GitHub", "https://github.com/smoothdeveloper/smoothdev", Icons.github)
     ]
+  |> Theme.headExtra [ Html.link [ prop.rel "stylesheet"; prop.href (baseUrl + "landing.css") ] ]
   |> Theme.editUrl "https://github.com/smoothdeveloper/smoothdev/edit/main/docs"
   |> Theme.footer (Html.p [ Html.text "Built with Nacara" ])
 
@@ -29,6 +30,7 @@ let site =
   |> Site.baseUrl baseUrl
   |> Site.origin origin
   |> Site.output "output"
+  |> Site.staticFiles "public"
   |> Markdown.register
   |> TreeSitter.register
   |> Search.register

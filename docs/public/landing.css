@@ -1,0 +1,166 @@
+/* Landing page (content/index.md, layout: splash). Scoped to the splash layout and to .sd-* classes. */
+
+:root {
+  --sd-accent-1 : var(--nacara-primary);
+  --sd-accent-2 : #b845fc;
+  --sd-grid     : color-mix(in oklab, var(--nacara-text) 7%, transparent);
+  --sd-glow     : 18%;
+}
+:root[data-theme="dark"] {
+  --sd-accent-2 : #c77dff;
+  --sd-grid     : color-mix(in oklab, var(--nacara-text) 6%, transparent);
+  --sd-glow     : 26%;
+}
+
+body:has(.nacara-layout--splash) { overflow-x: clip; }
+
+.nacara-layout--splash .nacara-content h2 {
+  border-top    : 0;
+  padding-top   : 0;
+  margin        : 4.5rem 0 .75rem;
+  text-align    : center;
+  font-size     : clamp(1.6rem, 1.3rem + 1vw, 2.1rem);
+  letter-spacing: -.03em;
+}
+.nacara-layout--splash .nacara-content h2 + p {
+  text-align: center;
+  color     : var(--nacara-text-muted);
+  max-width : 40rem;
+  margin    : 0 auto 2rem;
+  text-wrap : balance;
+}
+
+/* ---- Hero ---- */
+.sd-hero {
+  position  : relative;
+  isolation : isolate;
+  text-align: center;
+  padding   : 4.5rem 1rem 1.5rem;
+}
+.sd-hero::before, .sd-hero::after {
+  content       : "";
+  position      : absolute;
+  z-index       : -1;
+  pointer-events: none;
+  top           : calc(-1 * var(--nacara-navbar-height, 4rem) - 2rem);
+  left          : 50%;
+  width         : 100vw;
+  translate     : -50% 0;
+}
+.sd-hero::before {
+  height    : 36rem;
+  filter    : blur(24px);
+  background:
+    radial-gradient(30% 36% at 44% 34%, color-mix(in oklab, var(--sd-accent-1) var(--sd-glow), transparent), transparent 70%),
+    radial-gradient(24% 30% at 60% 28%, color-mix(in oklab, var(--sd-accent-2) var(--sd-glow), transparent), transparent 70%);
+}
+.sd-hero::after {
+  height             : 40rem;
+  background-image   : linear-gradient(var(--sd-grid) 1px, transparent 1px),
+                       linear-gradient(90deg, var(--sd-grid) 1px, transparent 1px);
+  background-size    : 56px 56px;
+  background-position: center top;
+  -webkit-mask-image : radial-gradient(ellipse 55% 60% at 50% 30%, #000 20%, transparent 75%);
+  mask-image         : radial-gradient(ellipse 55% 60% at 50% 30%, #000 20%, transparent 75%);
+}
+.nacara-content .sd-hero__logo {
+  display: block;
+  width  : 5.5rem;
+  height : 5.5rem;
+  margin : 0 auto 1.5rem;
+  border : 0;
+}
+.nacara-content .sd-hero h1 {
+  margin        : 0 0 1rem;
+  font-size     : clamp(2.4rem, 1.6rem + 3.2vw, 4rem);
+  line-height   : 1.05;
+  letter-spacing: -.045em;
+  font-weight   : 750;
+}
+.sd-hero__gradient {
+  background             : linear-gradient(90deg, var(--sd-accent-1), var(--sd-accent-2));
+  -webkit-background-clip: text;
+  background-clip        : text;
+  color                  : transparent;
+}
+.nacara-content .sd-hero > p {
+  max-width: 38rem;
+  margin   : 0 auto 2rem;
+  font-size: 1.15rem;
+  color    : var(--nacara-text-muted);
+  text-wrap: balance;
+}
+.sd-hero__actions {
+  display        : flex;
+  flex-wrap      : wrap;
+  gap            : .75rem;
+  justify-content: center;
+}
+.sd-install {
+  margin-top: 1.75rem;
+}
+.nacara-content .sd-install code {
+  display      : inline-block;
+  padding      : .55rem 1rem;
+  border-radius: var(--nacara-radius);
+  border       : 1px solid var(--nacara-border);
+  background   : var(--nacara-bg-subtle);
+  font-size    : .95rem;
+}
+
+/* ---- Buttons ---- */
+.nacara-content a.sd-btn {
+  display        : inline-flex;
+  align-items    : center;
+  gap            : .5rem;
+  height         : 2.75rem;
+  padding        : 0 1.25rem;
+  border-radius  : 999px;
+  font-weight    : 600;
+  text-decoration: none;
+  transition     : transform .15s ease, box-shadow .15s ease, background .15s ease;
+}
+.nacara-content a.sd-btn:hover { transform: translateY(-1px); }
+.nacara-content a.sd-btn--primary {
+  color     : var(--nacara-primary-contrast);
+  background: linear-gradient(90deg, var(--sd-accent-1), color-mix(in oklab, var(--sd-accent-1) 60%, var(--sd-accent-2)));
+  box-shadow: 0 6px 24px -8px color-mix(in oklab, var(--sd-accent-1) 70%, transparent);
+}
+.nacara-content a.sd-btn--secondary {
+  color     : var(--nacara-text);
+  background: var(--nacara-bg-raised);
+  border    : 1px solid var(--nacara-border);
+}
+.nacara-content a.sd-btn--secondary:hover { background: var(--nacara-bg-subtle); }
+
+/* ---- Features grid ---- */
+.sd-features {
+  display              : grid;
+  grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+  gap                  : 1rem;
+  margin               : 0 0 2rem;
+}
+.nacara-content .sd-feature {
+  display        : block;
+  padding        : 1.25rem 1.35rem;
+  border         : 1px solid var(--nacara-border);
+  border-radius  : var(--nacara-radius);
+  background     : var(--nacara-bg-raised);
+  color          : inherit;
+  text-decoration: none;
+  transition     : border-color .15s ease, transform .15s ease, box-shadow .15s ease;
+}
+.nacara-content a.sd-feature:hover {
+  border-color: color-mix(in oklab, var(--sd-accent-1) 55%, var(--nacara-border));
+  transform   : translateY(-2px);
+  box-shadow  : var(--nacara-shadow);
+}
+.sd-feature__title {
+  font-weight  : 650;
+  margin-bottom: .4rem;
+  color        : var(--nacara-heading);
+}
+.sd-feature__text {
+  color    : var(--nacara-text-muted);
+  font-size: .95rem;
+}
