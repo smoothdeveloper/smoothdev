@@ -13,11 +13,11 @@ open System.Text
 open System.Threading.Tasks
 
 type Route =
-  { prefix : string   // "/mattern/playground/"; "/" is the fallback
+  { prefix : string   // "/acme/playground/"; "/" is the fallback
     host   : string
     port   : int }
 
-/// "/mattern/playground/=http://127.0.0.1:5174"
+/// "/acme/playground/=http://127.0.0.1:5174"
 let parseRoute (text: string) =
   match text.IndexOf '=' with
   | -1 -> Error $"route without '=': {text}"
@@ -28,7 +28,7 @@ let parseRoute (text: string) =
     | None -> Error $"not a URL: {text.Substring(i + 1)}"
 
 /// The upstream for a request path: the longest prefix that matches, a prefix without its trailing
-/// slash counting too ("/mattern/playground" goes to the app).
+/// slash counting too ("/acme/playground" goes to the app).
 let pick (routes: Route array) (path: string) =
   let path = match path.IndexOf '?' with -1 -> path | i -> path.Substring(0, i)
   routes

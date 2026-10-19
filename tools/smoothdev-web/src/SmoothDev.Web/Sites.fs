@@ -25,7 +25,7 @@ type Site =
     dir      : string          // absolute project folder
     repo     : string          // absolute repository root (nearest .git), or dir
     name     : string
-    baseUrl  : string          // "/mattern/": always starts and ends with '/'
+    baseUrl  : string          // "/acme/": always starts and ends with '/'
     output   : string          // absolute output folder (pruned by every build)
     statics  : string option   // absolute folder copied verbatim to the site root
     content  : string array    // absolute content folders
@@ -106,7 +106,7 @@ let private first (pattern: string) (text: string) =
   let m = Regex.Match(text, pattern)
   if m.Success then Some m.Groups[1].Value else None
 
-/// "/mattern" -> "/mattern/", "" -> "/".
+/// "/acme" -> "/acme/", "" -> "/".
 let normalBase (b: string) =
   let t = b.Trim()
   let t = if t.StartsWith "/" then t else "/" + t
@@ -303,7 +303,7 @@ let private lastSegment (route: string) =
   route.TrimEnd('/').Split('/') |> Array.last
 
 /// Names an app answers to: its folder, its package name, and the package name without the site's prefix
-/// ("mattern-playground" under the site "mattern" is "playground").
+/// ("acme-playground" under the site "acme" is "playground").
 let private namesOf (site: Site) (app: ViteApp) =
   [|
     Config.nameOf app.dir
