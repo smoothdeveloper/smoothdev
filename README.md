@@ -9,7 +9,7 @@ Tooling for smooth development: small, sharp tools that take the friction out of
 
 Requirements: the .NET SDK pinned in `global.json`; `dotnet tool restore` brings paket.
 
-The documentation site is [Nacara](https://mangelmaxime.github.io/Nacara/), in `docs/`. From the repository root: `dotnet run --project docs -- watch`.
+The documentation site is [Nacara](https://mangelmaxime.github.io/Nacara/), in `docs/`. From the repository root: `dotnet run --project docs -- watch`, or `smoothdev-web site dev` to also run the Vite apps the docs host behind one port (see [Docs sites and Vite apps](docs/content/tools/smoothdev-web/sites.md)).
 Dependencies are managed with paket (`paket.dependencies` at the root).
 
 Licence: [GNU Affero General Public License v3.0](LICENSE) (AGPL-3.0-only).

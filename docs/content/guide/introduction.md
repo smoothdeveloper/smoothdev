@@ -12,5 +12,5 @@ smoothdev is a repository of tools. Each one is small, does one job, and is mean
 The .NET SDK is pinned in `global.json` at the repository root. Dependencies are paket.
 
 :::tip Editing this site
-From the repository root, `dotnet run --project docs -- watch`. The page reloads as you type.
+From the repository root, `dotnet run --project docs -- watch`. The page reloads as you type. `smoothdev-web site dev` runs the same watch, plus the Vite apps the site hosts, behind one port: see [Docs sites and Vite apps](../tools/smoothdev-web/sites.md).
 :::

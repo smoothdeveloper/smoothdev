@@ -106,7 +106,11 @@ stopped fable (pid 61721)
 | `tui` | terminal UI; on exit it prints the command line that started it, to re-run it |
 | `gui [--port N] [--detach]` | web GUI on 127.0.0.1 (default port 5399); `--detach` runs it in the background |
 | `config [show\|init]` | print the resolved config / write `smoothdev.web.json` from detection |
-| `scan [tui\|gui]` | list Vite apps, Web SDK projects and `smoothdev.web.json` files under this folder |
+| `scan [tui\|gui [--classic]]` | list documentation sites, Vite apps, Web SDK projects and `smoothdev.web.json` files under this folder |
+| `site [plan] [--json]` | the documentation sites (Nacara) under this folder, where each Vite app mounts and why, and the dev wiring |
+| `site dev [--port N]` | the site's watch, each mounted Vite app under its route, and one front port for all of them |
+| `site dist` / `site preview` | the site's build with each app built into its route, in `.smoothdev/web/site-dist`; served as a static host would |
+| `site stop\|status` | stop / list what `site dev` and `site preview` started (`--site <name>` picks one of several sites) |
 
 Global options: `--dir <app folder>` (default: the current folder; the nearest `smoothdev.web.json` at
 or above it wins), `--no-browser` (print URLs instead; also `SMOOTHDEV_WEB_NO_BROWSER=1`).
@@ -122,22 +126,32 @@ anything. Each line is a kind, a path relative to the folder, and a note:
 | `config` | a folder with `smoothdev.web.json` | the `name` in that file |
 | `vite` | a Vite app (a Vite config, or a manifest that depends on `vite`) | the package name |
 | `server` | an `.fsproj` or `.csproj` that uses `Microsoft.NET.Sdk.Web` | the project file name |
+| `site` | an F# project that references `Nacara.Core` and calls `Nacara.run` | the project file name |
 
 A folder that has `smoothdev.web.json` is one hit. The walk does not also list the Vite app or the Web
 SDK projects inside it. Directories named `node_modules`, `bin`, `obj`, `dist`, `fable_modules`, `.git`,
 `.smoothdev`, `artifacts`, `paket-files`, `.paket`, `target` and `packages` are not entered.
 
 Progress goes to stderr (`scanning 250 …` every 250 folders, then `done`). The hits are written to
-`~/.smoothdev/scan/`. If a cache of a parent folder already covers this one, `scan` prints those hits
-and does not walk (`cached N apps from <root>`). A cache of this exact folder is not reused by plain
+`~/.smoothdev/scan/`. If a cache of a parent folder already covers this one and is less than 30 minutes
+old, `scan` prints those hits and does not walk (`cached N apps from <root>`). A cache of this exact folder is not reused by plain
 `scan`; the walk runs again and replaces it.
 
 `scan tui` and `scan gui` show the same hits as a tree. The first two levels start open. A folder can
 be folded; a leaf can be opened, which runs the tool in that app the same way `tui` or `gui` would.
 A cache is shown at once, then the walk refreshes it, unless a parent cache already covers the folder.
 Apps that are already running are marked. The TUI keys are `j`/`k` to move, space to fold, enter to
-open, `l` for the next log, `q` to quit. It needs an interactive terminal. `scan gui` serves the page
-on `127.0.0.1`, with an optional `--port`.
+open, `l` for the next log, `q` to quit. It needs an interactive terminal.
+
+`scan gui` serves a console page on `127.0.0.1` (default port 5399, `--port N`). It lists the hits,
+each documentation site with the Vite apps mounted under it and the reasons, the front's routing,
+what runs, the logs, and buttons for `site dev`, `site stop`, `site dist` and `site preview`. The page
+is F# compiled by Fable to Lit web components (`gui/`, built by `dotnet fsi build.fsx -- check` or
+`pack`). Without the built page, or with `--classic`, `scan gui` serves the earlier server-rendered tree.
+
+![smoothdev-web console](docs/console.png)
+
+How sites and apps are found and wired is [Docs sites and Vite apps](../../docs/content/tools/smoothdev-web/sites.md).
 
 ## Components
 
