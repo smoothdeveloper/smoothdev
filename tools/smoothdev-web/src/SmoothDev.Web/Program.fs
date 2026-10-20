@@ -266,7 +266,13 @@ let who (port: int) =
   | Some l ->
     let p = l.ports |> Array.find (fun p -> p.port = port)
     let lead, chain = Launches.by l
-    printfn "%d  %s  %s" port p.role (if p.url = "" then "(claimed, not bound yet)" else p.url)
+    let where =
+      if p.url <> "" then p.url
+      else
+        match SiteActions.listenerOf port with
+        | Some(pid, _) -> $"http://127.0.0.1:{port}/ (pid {pid})"
+        | None -> "(claimed, not bound yet)"
+    printfn "%d  %s  %s" port p.role where
     printfn "  launch %s (%s), %s in %s" l.id (Launches.status l) (String.concat " " l.command) (home l.dir)
     printfn "  by %s  %s" lead chain
     0
