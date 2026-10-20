@@ -8,6 +8,7 @@ open Browser.Types
 open Firelight
 open type Firelight.Lit
 open SmoothDev.Web.Gui.Model
+open smoothdev.ui.fable.webcomponents
 
 /// <sd-route-map .routes=… front-port=… running>: one port in front, a line to each upstream.
 [<AttachMembers>]
@@ -85,10 +86,7 @@ type LogView() =
   static member styles =
     css $"""
 :host {{ display: block; }}
-.tabs {{ display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 8px; }}
-button {{ font: 12px var(--sd-mono); color: var(--sd-muted); background: transparent; border: 1px solid var(--sd-line);
-  border-radius: 999px; padding: 3px 10px; cursor: pointer; }}
-button[aria-selected="true"] {{ color: var(--sd-bright); border-color: var(--sd-accent); background: var(--sd-glow); }}
+sd-tabs {{ margin-bottom: 8px; }}
 pre {{ margin: 0; max-height: 260px; overflow: auto; padding: 12px; background: var(--sd-bg); border: 1px solid var(--sd-line);
   border-radius: 10px; font: 12px/1.5 var(--sd-mono); color: var(--sd-ink); white-space: pre-wrap; }}
 .empty {{ color: var(--sd-muted); font: 13px var(--sd-sans); }}
@@ -122,12 +120,13 @@ pre {{ margin: 0; max-height: 260px; overflow: auto; padding: 12px; background: 
     if this.names.Length = 0 then
       html $"""<p class="empty">Nothing runs for this site yet.</p>"""
     else
-      let current = this.current
-      let tabs =
-        [ for n in this.names ->
-            html $"""<button role="tab" aria-selected={string (n = current)} @click={fun (_: Event) -> this.selected <- n; this.lines <- [||]; this.refresh ()}>{n}</button>""" ]
-      html $"""<div class="tabs" role="tablist">{tabs}</div><pre>{String.concat "\n" this.lines}</pre>"""
+      let pick (e: Event) =
+        this.selected <- Events.detail<string> e
+        this.lines <- [||]
+        this.refresh ()
+      html $"""<sd-tabs .tabs={this.names} selected={this.current} @sd-select={pick}></sd-tabs><pre>{String.concat "\n" this.lines}</pre>"""
 
 let register () =
+  Elements.register ()
   defineElement<RouteMap> "sd-route-map"
   defineElement<LogView> "sd-log"

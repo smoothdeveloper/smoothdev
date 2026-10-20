@@ -11,5 +11,9 @@
     <Compile Include="src/Components.fs" />
     <Compile Include="src/Console.fs" />
   </ItemGroup>
+  <ItemGroup>
+    <!-- the shared controls and theme tokens, from this repository's ui/ -->
+    <ProjectReference Include="..\..\..\ui\smoothdev.ui.fable.webcomponents\smoothdev.ui.fable.webcomponents.fsproj" />
+  </ItemGroup>
   <Import Project="..\..\..\.paket\Paket.Restore.targets" />
 </Project>
