@@ -1,7 +1,7 @@
 /// smoothdev.web.json: parsing, auto-detection when it is absent, and writing it back.
 /// The signature lists what the rest of this tool (and its tests) call. Helpers stay in Config.fs.
 [<CompilationRepresentation(CompilationRepresentationFlags.ModuleSuffix)>]
-module SmoothDev.Web.Config
+module smoothdev.web.Config
 
 val fileName: string
 

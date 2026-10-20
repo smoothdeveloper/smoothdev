@@ -1,6 +1,6 @@
 /// Web GUI: a page served by the tool itself on 127.0.0.1. Server-rendered HTML with plain forms and a
 /// meta refresh, so there is no client-side code to build or ship.
-module SmoothDev.Web.Gui
+module smoothdev.web.Gui
 
 open System
 open System.Collections.Concurrent

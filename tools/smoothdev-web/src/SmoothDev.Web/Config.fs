@@ -1,6 +1,6 @@
 /// smoothdev.web.json: parsing, auto-detection when it is absent, and writing it back.
 [<CompilationRepresentation(CompilationRepresentationFlags.ModuleSuffix)>]
-module SmoothDev.Web.Config
+module smoothdev.web.Config
 
 open System
 open System.IO

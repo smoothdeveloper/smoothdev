@@ -1,5 +1,5 @@
 /// Small components of the console: the front proxy's routing drawn as a map, and a log viewer.
-module SmoothDev.Web.Gui.Components
+module smoothdev.web.gui.Components
 
 open Fable.Core
 open Fable.Core.JsInterop
@@ -7,7 +7,7 @@ open Browser
 open Browser.Types
 open Firelight
 open type Firelight.Lit
-open SmoothDev.Web.Gui.Model
+open smoothdev.web.gui.Model
 open smoothdev.ui.fable.webcomponents
 
 /// <sd-route-map .routes=… front-port=… running>: one port in front, a line to each upstream.

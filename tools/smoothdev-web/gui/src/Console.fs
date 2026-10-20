@@ -1,6 +1,6 @@
 /// <sd-console>: the workspace as smoothdev-web sees it. Documentation sites, the Vite apps each one hosts
 /// (where, why, how sure), the one-port wiring of `site dev`, and the controls and logs of what runs.
-module SmoothDev.Web.Gui.Console
+module smoothdev.web.gui.Console
 
 open Fable.Core
 open Fable.Core.JsInterop
@@ -8,7 +8,7 @@ open Browser
 open Browser.Types
 open Firelight
 open type Firelight.Lit
-open SmoothDev.Web.Gui.Model
+open smoothdev.web.gui.Model
 
 let private kindLabel kind =
   match kind with
@@ -391,7 +391,7 @@ th {{ color: var(--sd-muted); font-weight: 500; }}
         if c.demo then html $"""<div class="banner">Demo data. Run <code>smoothdev-web scan gui</code> in a folder to see your own workspace.</div>"""
         else nothing
       let toasts =
-        SmoothDev.Web.Gui.Model.toasts c.messages
+        smoothdev.web.gui.Model.toasts c.messages
         |> Array.map (fun m -> html $"""<div class={"toast " + m.level}>{m.at} {m.text}</div>""")
       html $"""
 <header>

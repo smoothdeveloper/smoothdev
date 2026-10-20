@@ -1,5 +1,5 @@
 /// Starting, watching and stopping components; one-shot commands through CliWrap.
-module SmoothDev.Web.Runner
+module smoothdev.web.Runner
 
 open System
 open System.Collections

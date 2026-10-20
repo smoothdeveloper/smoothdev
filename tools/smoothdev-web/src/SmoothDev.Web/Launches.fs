@@ -4,7 +4,7 @@
 /// claimed and the processes it started. Ports are claimed in the registry, under its lock, before
 /// anything binds them, so two invocations started together (in one folder or in two) never pick the
 /// same port. A launch whose command and processes have all exited moves to launches/ended.
-module SmoothDev.Web.Launches
+module smoothdev.web.Launches
 
 open System
 open System.Diagnostics

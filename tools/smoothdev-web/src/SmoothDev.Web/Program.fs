@@ -1,4 +1,4 @@
-module SmoothDev.Web.Program
+module smoothdev.web.Program
 
 open System
 open System.Collections.Generic

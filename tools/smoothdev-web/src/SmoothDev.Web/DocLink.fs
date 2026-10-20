@@ -2,7 +2,7 @@
 /// `docs/content/tools/smoothdev-web/`, and the site root is `docs/site-root.txt`.
 /// Both are read through the filesystem type provider, so renaming or moving
 /// a file fails the build.
-module SmoothDev.Web.DocLink
+module smoothdev.web.DocLink
 
 open System.IO
 open Partas.TypeProvider.BuildHelper

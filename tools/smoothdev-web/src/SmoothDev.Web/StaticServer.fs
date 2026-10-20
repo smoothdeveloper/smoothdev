@@ -1,5 +1,5 @@
 /// A small static file server for dist/ (the preview): what a static host would serve, on 127.0.0.1.
-module SmoothDev.Web.StaticServer
+module smoothdev.web.StaticServer
 
 open System
 open System.IO

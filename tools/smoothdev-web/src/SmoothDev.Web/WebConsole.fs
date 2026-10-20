@@ -1,6 +1,6 @@
 /// `scan gui`: the console page (a Lit app built from ../gui, shipped next to the tool in `gui/`) and its
 /// JSON API. The page polls `/api/console`; actions run here, one at a time, in the background.
-module SmoothDev.Web.WebConsole
+module smoothdev.web.WebConsole
 
 open System
 open System.Collections.Concurrent

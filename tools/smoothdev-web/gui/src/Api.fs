@@ -1,9 +1,9 @@
 /// The tool's HTTP API, relative to the page (it is served at `/`, or under a site's base in development).
-module SmoothDev.Web.Gui.Api
+module smoothdev.web.gui.Api
 
 open Fable.Core
 open Fable.Core.JsInterop
-open SmoothDev.Web.Gui.Model
+open smoothdev.web.gui.Model
 
 [<Emit("fetch($0, { cache: 'no-store' }).then(r => { if (!r.ok) throw new Error(r.status + ' ' + r.statusText); return r.json() })")>]
 let private getJson (url: string) : JS.Promise<obj> = jsNative

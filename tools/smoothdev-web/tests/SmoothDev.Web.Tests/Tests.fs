@@ -1,4 +1,4 @@
-module SmoothDev.Web.Tests
+module smoothdev.web.Tests
 
 open System
 open System.IO
@@ -6,8 +6,9 @@ open System.Net
 open System.Net.Sockets
 open System.Threading
 open Expecto
-open SmoothDev.Web
-open SmoothDev.Web.Gui
+open smoothdev.web
+open smoothdev.web.Gui
+open smoothdev.web.gui
 
 /// A fresh temporary folder, deleted when disposed.
 type TempDir() =

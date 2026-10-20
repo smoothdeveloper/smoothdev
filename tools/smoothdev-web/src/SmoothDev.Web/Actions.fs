@@ -1,5 +1,5 @@
 /// What the commands, the TUI and the GUI do: start and stop components, build, bundle, open.
-module SmoothDev.Web.Actions
+module smoothdev.web.Actions
 
 open System
 open System.IO

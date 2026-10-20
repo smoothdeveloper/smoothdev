@@ -3,7 +3,7 @@
     <OutputType>Exe</OutputType>
     <RollForward>Major</RollForward>
     <AssemblyName>smoothdev-web</AssemblyName>
-    <RootNamespace>SmoothDev.Web</RootNamespace>
+    <RootNamespace>smoothdev.web</RootNamespace>
   </PropertyGroup>
   <PropertyGroup>
     <!-- dotnet tool -->

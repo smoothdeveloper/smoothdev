@@ -1,5 +1,5 @@
 /// Free-port detection: probe, then pick the first free port at or above the preferred one.
-module SmoothDev.Web.Ports
+module smoothdev.web.Ports
 
 open System.Net
 open System.Net.Sockets

@@ -2,7 +2,7 @@
 /// invocation can find and stop. `Posix` uses posix_spawn into a new process group and signals;
 /// `Windows` uses `cmd /c` plus `taskkill /T`, with the leader's pid standing in for the group id.
 /// The functions at the bottom pick the right one for the running OS.
-module SmoothDev.Web.ProcessManagement
+module smoothdev.web.ProcessManagement
 
 open System
 open System.Diagnostics

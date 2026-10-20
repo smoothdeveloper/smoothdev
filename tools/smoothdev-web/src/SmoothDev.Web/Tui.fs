@@ -1,5 +1,5 @@
 /// Terminal UI: a Spectre.Console live display of the components, one log, messages and keys.
-module SmoothDev.Web.Tui
+module smoothdev.web.Tui
 
 open System
 open System.Collections.Concurrent

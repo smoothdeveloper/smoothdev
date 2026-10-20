@@ -1,6 +1,6 @@
 /// What the console shows, as the tool's `/api/console` sends it, and the view logic that needs no
 /// browser (also compiled into the .NET tests). Field names are the JSON's.
-module SmoothDev.Web.Gui.Model
+module smoothdev.web.gui.Model
 
 type ScanRow =
   { path : string

@@ -1,4 +1,4 @@
-namespace SmoothDev.Web
+namespace smoothdev.web
 
 open System
 

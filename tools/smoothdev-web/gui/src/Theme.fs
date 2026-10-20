@@ -1,7 +1,7 @@
 /// The palette: smoothdev.ui's theme tokens and the console's own (one colour per kind of process), as the
 /// page's custom properties (they reach inside every component's shadow root), dark and light after
 /// `data-theme` on <html>, which the Nacara theme sets too.
-module SmoothDev.Web.Gui.Theme
+module smoothdev.web.gui.Theme
 
 open smoothdev.ui
 open smoothdev.ui.fable.webcomponents

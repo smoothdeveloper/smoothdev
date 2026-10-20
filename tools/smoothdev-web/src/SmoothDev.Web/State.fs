@@ -1,6 +1,6 @@
 /// The state file (.smoothdev/web/state.json in the app folder): what this app has running, so a second
 /// invocation can show and stop it. Writes are atomic (temp file + rename) under a lock file.
-module SmoothDev.Web.State
+module smoothdev.web.State
 
 open System
 open System.IO

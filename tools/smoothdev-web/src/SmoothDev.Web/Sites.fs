@@ -1,7 +1,7 @@
 /// Static documentation sites (Nacara: the site is an F# program) and the Vite apps they host.
 /// Everything here is read from the files: no process runs. `plan` says which app is mounted where
 /// under which site, why, and how sure the guess is; `SiteActions` runs that plan.
-module SmoothDev.Web.Sites
+module smoothdev.web.Sites
 
 open System
 open System.IO

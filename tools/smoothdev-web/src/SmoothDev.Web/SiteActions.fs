@@ -1,11 +1,11 @@
 /// Runs a site plan (`Sites.plan`): the site's own dev server, one Vite dev server per mounted app
 /// under its base, and a front proxy that puts them on one port; or the assembled production site.
-module SmoothDev.Web.SiteActions
+module smoothdev.web.SiteActions
 
 open System
 open System.IO
 open System.Threading.Tasks
-open SmoothDev.Web.Actions
+open smoothdev.web.Actions
 
 let frontName  = "site-front"
 let siteName   = "site-nacara"

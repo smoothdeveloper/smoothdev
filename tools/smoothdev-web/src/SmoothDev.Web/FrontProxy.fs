@@ -3,7 +3,7 @@
 /// raw TCP after the request head, so WebSocket upgrades (Vite HMR, the site's reload) pass through as
 /// they are. Requests that are not upgrades get `Connection: close`, so one browser connection never
 /// carries requests meant for two upstreams.
-module SmoothDev.Web.FrontProxy
+module smoothdev.web.FrontProxy
 
 open System
 open System.IO

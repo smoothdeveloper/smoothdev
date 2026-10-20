@@ -1,7 +1,7 @@
 /// Other running instances: dev and web servers listening on this machine that no launch in the
 /// registry holds. Read from the listening TCP sockets (lsof, else ss on Linux), with each process's
 /// command line, folder, parents and age, and classified by what its command looks like.
-module SmoothDev.Web.Others
+module smoothdev.web.Others
 
 open System
 open System.Diagnostics
