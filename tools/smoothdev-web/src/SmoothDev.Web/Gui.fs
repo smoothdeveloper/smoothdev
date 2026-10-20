@@ -482,7 +482,7 @@ let run (cfg: Config) (preferredPort: int option) (browser: bool) =
     |> Array.filter (fun e -> Component.parse e.name <> Some Component.Gui && e.port > 0)
     |> Array.map _.port
 
-  let port = Ports.pick reserved (preferredPort |> Option.defaultValue cfg.guiPort)
+  let port = Launches.Current.claim "gui" (preferredPort |> Option.defaultValue cfg.guiPort) reserved
 
   let url = $"http://127.0.0.1:{port}/"
   use listener = new HttpListener()
@@ -626,7 +626,7 @@ let scan root preferredPort =
       finished.Value <- true)
     |> ignore
 
-  let port = Ports.pick [||] (preferredPort |> Option.defaultValue 5399)
+  let port = Launches.Current.claim "scan gui" (preferredPort |> Option.defaultValue 5399) [||]
   let url = $"http://127.0.0.1:{port}/"
   use listener = new HttpListener()
   listener.Prefixes.Add url
@@ -887,9 +887,7 @@ let detach (ctx: Actions.Context) (preferredPort: int option) =
       return! Actions.openUrl ctx e.url
     | None ->
       let port =
-        Ports.pick 
-          (Actions.reserved cfg)
-          (preferredPort |> Option.defaultValue cfg.guiPort)
+        Launches.Current.claim "gui" (preferredPort |> Option.defaultValue cfg.guiPort) (Actions.reserved cfg)
 
       let url = $"http://127.0.0.1:{port}/"
 

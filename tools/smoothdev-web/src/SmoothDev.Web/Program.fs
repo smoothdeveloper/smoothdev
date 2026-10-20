@@ -36,6 +36,10 @@ Commands:
   site stop|status [--json]  stop / list what `site dev` and `site preview` started
   site dist                  the site's build, with each mounted app built into its route (.smoothdev/web/site-dist)
   site preview               serve the site dist as a static host would
+  launches [--json] [--all]  every smoothdev-web launch on this machine: who started it (launcher, parent
+                             processes), where, its ports and URLs; --all adds the ended ones
+  launches stop <id>         stop what a launch started
+  who <port>                 the launch holding a port, else the process listening on it
 
 Options:
   --dir <path>    the app folder (default: current folder; the nearest smoothdev.web.json above it wins)
@@ -192,6 +196,106 @@ let config (fromDir: string) (cfg: Config) sub =
     eprintf "%s" usage
     2
 
+let private ago (t: DateTimeOffset) =
+  let d = DateTimeOffset.Now - t
+  if d.TotalHours >= 1.0 then $"{int d.TotalHours}h{d.Minutes:D2}m"
+  elif d.TotalMinutes >= 1.0 then $"{d.Minutes}m{d.Seconds:D2}s"
+  else $"{d.Seconds}s"
+
+let private home (path: string) =
+  let h = Environment.GetFolderPath Environment.SpecialFolder.UserProfile
+  if path.StartsWith h then "~" + path.Substring h.Length else path
+
+/// Who started it: the launcher name, then the parent processes up to the first one that is not a shell
+/// or a dotnet host (an editor, a terminal, an agent), at most four.
+let launchedBy (l: Launches.Launch) =
+  let shells = set [ "zsh"; "-zsh"; "bash"; "-bash"; "sh"; "fish"; "dotnet"; "login" ]
+  let chain =
+    l.ancestors
+    |> Array.truncate 6
+    |> Array.map (fun a -> $"{a.name} ({a.pid})")
+  let named =
+    l.ancestors |> Array.tryFind (fun a -> not (shells.Contains a.name)) |> Option.map _.name
+  let lead =
+    match l.launcher, named with
+    | "", Some n -> n
+    | "", None -> "?"
+    | launcher, _ -> launcher
+  lead, String.concat " <- " chain
+
+let printLaunch (l: Launches.Launch) =
+  let lead, chain = launchedBy l
+  let state = Launches.status l
+  let commandText = l.command |> String.concat " "
+  AnsiConsole.MarkupLine $"[bold]{Markup.Escape l.id}[/]  {state}  [cyan]{Markup.Escape commandText}[/]  in {Markup.Escape (home l.dir)}  {ago l.startedAt} ago"
+  AnsiConsole.MarkupLine $"  by [bold]{Markup.Escape lead}[/]  [grey]{Markup.Escape chain}[/]  user {Markup.Escape l.user}"
+  for p in l.ports |> Array.sortBy _.port do
+    let url = if p.url = "" then "(claimed)" else p.url
+    AnsiConsole.MarkupLine $"  {p.port,-6} {Markup.Escape p.role,-28} {Markup.Escape url}"
+  let procs = l.children |> Array.map (fun c -> $"{c.name} {c.pid}") |> String.concat ", "
+  if procs <> "" then AnsiConsole.MarkupLine $"  [grey]processes {Markup.Escape procs}[/]"
+
+let launches (sub: string list) =
+  let home = Launches.home ()
+  match sub with
+  | [] | [ "--all" ] | [ "--json" ] | [ "--json"; "--all" ] | [ "--all"; "--json" ] ->
+    let all = List.contains "--all" sub
+    let ls = Launches.list home all
+    if List.contains "--json" sub then
+      let rows =
+        ls |> Array.map (fun l ->
+          let lead, _ = launchedBy l
+          {| l with status = Launches.status l; by = lead |})
+      printfn "%s" (Launches.toJson rows)
+    elif ls.Length = 0 then
+      printfn "no smoothdev-web launch runs (registry: %s)" (Launches.dirOf home)
+    else
+      for l in ls do printLaunch l
+    0
+  | [ "stop"; id ] ->
+    match Launches.list home false |> Array.filter (fun l -> l.id = id || l.id.StartsWith id) with
+    | [| l |] ->
+      for c in l.children do
+        match State.read c.root |> Array.tryFind (fun e -> e.name = c.name && e.pid = c.pid) with
+        | Some e ->
+          let forced = (Runner.stop c.root e (TimeSpan.FromSeconds 5.)).GetAwaiter().GetResult()
+          let how = if forced then ", killed" else ""
+          say Success $"stopped {c.name} (pid {c.pid}){how}"
+        | None ->
+          if ProcessManagement.alive c.pid then
+            ProcessManagement.signalGroup c.pid ProcessManagement.SIGTERM |> ignore
+            say Success $"sent SIGTERM to {c.name} (pid {c.pid})"
+      Launches.sweep home |> ignore
+      0
+    | [||] ->
+      say Fail $"no running launch {id}"
+      1
+    | many ->
+      let ids = many |> Array.map _.id |> String.concat ", "
+      say Fail $"{id} names {many.Length} launches: {ids}"
+      1
+  | _ ->
+    eprintf "%s" usage
+    2
+
+let who (port: int) =
+  match Launches.holderOf (Launches.home ()) port with
+  | Some l ->
+    let p = l.ports |> Array.find (fun p -> p.port = port)
+    let lead, chain = launchedBy l
+    printfn "%d  %s  %s" port p.role (if p.url = "" then "(claimed, not bound yet)" else p.url)
+    printfn "  launch %s (%s), %s in %s" l.id (Launches.status l) (String.concat " " l.command) (home l.dir)
+    printfn "  by %s  %s" lead chain
+    0
+  | None ->
+    match SiteActions.listenerOf port with
+    | Some(pid, cwd) ->
+      printfn "%d  pid %d in %s: not started by smoothdev-web" port pid (home cwd)
+      0
+    | None ->
+      printfn "%d  nothing listens there" port
+      1
+
 /// Splits the global options from the command.
 let rec globals (args: string list) dir browser rest =
   match args with
@@ -328,6 +432,9 @@ let main argv =
     let dir, browser, command =
       globals args Environment.CurrentDirectory (not noBrowserEnv) []
 
+    Launches.Current.describe (Path.GetFullPath dir) (List.toArray command)
+    AppDomain.CurrentDomain.ProcessExit.Add(fun _ -> Launches.Current.finish ())
+
     match
       Environment.GetEnvironmentVariable "COLUMNS"
       |> Option.ofObj
@@ -337,6 +444,8 @@ let main argv =
     | _ -> ()
 
     match command with
+    | "launches" :: sub -> launches sub
+    | [ "who"; port ] -> who (int port)
     | [ "scan" ] ->
       match Config.scanFromCache dir with
       | Some(rows, true, cachedRoot) ->

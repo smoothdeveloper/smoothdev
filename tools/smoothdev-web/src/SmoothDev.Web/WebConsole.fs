@@ -306,7 +306,7 @@ let handle (s: State) (dir: string) (ctx: HttpListenerContext) =
 let run (root: string) (dir: string) (preferredPort: int option) (browser: bool) =
   let s = State(Path.GetFullPath root)
   s.Rescan ()
-  let port = Ports.pick [||] (preferredPort |> Option.defaultValue Config.Defaults.guiPort)
+  let port = Launches.Current.claim "console" (preferredPort |> Option.defaultValue Config.Defaults.guiPort) [||]
   let url = $"http://127.0.0.1:{port}/"
   use listener = new HttpListener()
   listener.Prefixes.Add url

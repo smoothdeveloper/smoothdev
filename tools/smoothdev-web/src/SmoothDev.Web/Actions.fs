@@ -120,8 +120,10 @@ let uptime (e: Entry) =
 let reserved (cfg: Config) =
   State.live cfg.root |> Array.map _.port |> Array.filter (fun p -> p > 0)
 
-let pickPort ctx what preferred =
-  let port = Ports.pick (reserved ctx.config) preferred
+/// A free port, claimed in the launch registry before anything binds it (see Launches).
+let pickPort ctx (what: string) preferred =
+  let role = if what.StartsWith "the " then what.Substring 4 else what
+  let port = Launches.Current.claim role preferred (reserved ctx.config)
 
   if port <> preferred then
     ctx.say Warn $"port {preferred} is busy: {what} uses {port}"

@@ -71,7 +71,9 @@ let internal start root name (argv: string array) env cwd port url : Result<Entr
     , $"# {DateTimeOffset.Now:``yyyy-MM-dd HH:mm:ss``} smoothdev-web started {name}: {commandLine argv}\n# in {cwd}\n"
   )
 
-  ProcessManagement.spawn argv (environment env) cwd log
+  let launch = Launches.Current.get ()
+
+  ProcessManagement.spawn argv (environment (Array.append env [| "SMOOTHDEV_WEB_LAUNCH", launch.id |])) cwd log
   |> Result.map (fun pid ->
     let entry =
       {
@@ -87,6 +89,7 @@ let internal start root name (argv: string array) env cwd port url : Result<Entr
       }
 
     State.add root entry
+    try Launches.Current.addChild root entry with _ -> ()
     entry)
 
 /// Starts one of the tracked components. `part.name` is the state-file id and the log file name.
@@ -217,6 +220,7 @@ let stop root (e: Entry) (timeout: TimeSpan) =
       do! Task.Delay 200
 
     State.remove root e.name
+    try Launches.removeChild (Launches.home ()) root e.name e.pid with _ -> ()
     return forced
   }
 

@@ -1021,7 +1021,82 @@ let siteStatus =
       }
     ]
 
-let tests = testList "smoothdev.web" [ ports; config; tracking; staticServer; guiPage; sites; selfDoc; console; front; siteStatus ]
+let launches =
+  let launchIn (home: string) (pid: int) suffix =
+    { Launches.create home [| "site"; "dev" |] with id = $"test-{suffix}"; pid = pid }
+  testList
+    "launches"
+    [
+      test "two launches claiming at once never get the same port" {
+        use home = new TempDir()
+        let a = launchIn home.path Environment.ProcessId "a"
+        let b = launchIn home.path Environment.ProcessId "b"
+        // every port looks free: only the registry keeps them apart
+        let claims (l: Launches.Launch) =
+          async { return [ for i in 1 .. 12 -> Launches.claim home.path l $"role {i}" 8080 [||] (fun _ -> true) ] }
+        let got = [ claims a; claims b ] |> Async.Parallel |> Async.RunSynchronously |> List.concat
+        Expect.equal (List.distinct got |> List.length) 24 "24 claims, 24 ports"
+        Expect.equal (List.sort got) [ 8080 .. 8103 ] "the first free ones from the preferred port"
+        let live = Launches.list home.path false
+        Expect.equal (live |> Array.map _.id |> Array.sort) [| "test-a"; "test-b" |] "both launches are listed"
+        Expect.equal (Launches.holderOf home.path 8080 |> Option.map _.ports.Length) (Some 12) "the holder of a port"
+      }
+
+      test "a launch whose processes all exited is moved to ended, and frees its ports" {
+        use home = new TempDir()
+        let p = Diagnostics.Process.Start("true")
+        p.WaitForExit()
+        let dead = launchIn home.path p.Id "dead"
+        Launches.claim home.path dead "site" 9000 [||] (fun _ -> true) |> ignore
+        let live = launchIn home.path Environment.ProcessId "live"
+        Expect.equal (Launches.claim home.path live "site" 9000 [||] (fun _ -> true)) 9000 "the dead launch's port is free again"
+        Expect.equal (Launches.list home.path false |> Array.map _.id) [| "test-live" |] "only the live one runs"
+        let ended = Launches.list home.path true |> Array.filter (fun l -> l.id = "test-dead")
+        Expect.equal ended.Length 1 "the dead one is listed with --all"
+        Expect.equal (Launches.status ended[0]) "ended" "as ended"
+        Expect.isTrue (File.Exists(Launches.endedDirOf home.path </> "test-dead.json")) "in launches/ended"
+      }
+
+      test "a launch whose command exited stays while a process it started runs" {
+        use home = new TempDir()
+        let p = Diagnostics.Process.Start("true")
+        p.WaitForExit()
+        let l = launchIn home.path p.Id "site"
+        Launches.claim home.path l "front" 5400 [||] (fun _ -> true) |> ignore
+        Launches.addChild home.path l { name = "site-front"; pid = Environment.ProcessId; root = home.path; port = 5400; url = "http://127.0.0.1:5400/"; log = "" }
+        Launches.finish home.path l
+        match Launches.list home.path false with
+        | [| r |] ->
+          Expect.equal (Launches.status r) "running" "its command exited, its process runs"
+          Expect.equal (r.ports |> Array.map (fun c -> c.port, c.pid, c.url)) [| 5400, Environment.ProcessId, "http://127.0.0.1:5400/" |] "the claim is bound to the process and its URL"
+        | other -> failtest $"expected one live launch, got {other.Length}"
+      }
+
+      test "the parent processes of a launch" {
+        if not (OperatingSystem.IsWindows()) then
+          let l = Launches.create "/tmp" [| "status" |]
+          let parent = l.ancestors
+          Expect.isNonEmpty parent "ancestors"
+          let ppid =
+            let info = Diagnostics.ProcessStartInfo("ps", $"-o ppid= -p {Environment.ProcessId}", RedirectStandardOutput = true)
+            use ps = Diagnostics.Process.Start info |> nonNull
+            int (ps.StandardOutput.ReadToEnd().Trim())
+          Expect.equal l.ppid ppid "the parent first"
+          Expect.equal parent[0].pid ppid "the parent first"
+          Expect.isNotEmpty parent[0].name "with its name"
+          Expect.isNotEmpty parent[0].command "and command line"
+          Expect.equal l.user Environment.UserName "user"
+      }
+    ]
+
+let tests = testList "smoothdev.web" [ launches; ports; config; tracking; staticServer; guiPage; sites; selfDoc; console; front; siteStatus ]
 
 [<EntryPoint>]
-let main argv = runTestsWithCLIArgs [] argv tests
+let main argv =
+  // launches the tests start are recorded in a registry of their own, not in ~/.smoothdev
+  let home = Path.Combine(Path.GetTempPath(), $"smoothdev-web-tests-home-{Guid.NewGuid():N}")
+  Environment.SetEnvironmentVariable("SMOOTHDEV_HOME", home)
+  try
+    runTestsWithCLIArgs [] argv tests
+  finally
+    try Directory.Delete(home, true) with _ -> ()
