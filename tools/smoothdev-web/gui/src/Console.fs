@@ -109,6 +109,11 @@ th {{ color: var(--sd-muted); font-weight: 500; }}
   padding: 7px 12px; font-size: 12.5px; box-shadow: 0 6px 24px rgba(0,0,0,.25); }}
 .toast.fail {{ border-left-color: var(--sd-bad); }} .toast.success {{ border-left-color: var(--sd-ok); }} .toast.warn {{ border-left-color: var(--sd-warn); }}
 .empty {{ color: var(--sd-muted); padding: 40px; text-align: center; }}
+.card.others .empty {{ padding: 12px; }}
+.card.others a {{ color: var(--sd-bright); text-decoration: none; }}
+.card.others a:hover {{ color: var(--sd-accent); }}
+.other-title {{ color: var(--sd-muted); font: 11.5px var(--sd-sans); }}
+.row-actions {{ white-space: nowrap; text-align: right; }}
 .banner {{ border: 1px dashed var(--sd-warn); color: var(--sd-warn); border-radius: 10px; padding: 8px 12px; margin-bottom: 16px; font-size: 13px; }}
 """
 
@@ -298,6 +303,46 @@ th {{ color: var(--sd-muted); font-weight: 500; }}
 </div>"""
     else nothing
 
+  /// Dev and web servers listening on this machine that no launch holds: what `smoothdev-web others`
+  /// prints, with open and stop.
+  member this.othersCard (c: Console) =
+    let others = c.others |> Option.ofObj |> Option.defaultValue [||]
+    let badge (kind: string) =
+      let k =
+        match kind with
+        | "vite" -> "k-vite"
+        | "nacara" -> "k-site"
+        | "dotnet" | "dotnet watch" | "asp.net" | "fable watch" -> "k-server"
+        | _ -> "k-config"
+      html $"""<span class={"kind " + k}>{kind}</span>"""
+    let row (o: Other) =
+      let firstUrl = o.ports |> Array.tryHead |> Option.map _.url
+      let openIt (_: Event) = firstUrl |> Option.iter (fun u -> window.``open`` (u, "_blank") |> ignore)
+      let stopIt (_: Event) =
+        if window.confirm ($"Send SIGTERM to {o.kind} {o.project} (pid {o.pid})?") then
+          this.pending <- "stop"
+          Api.stopOther o.pid (fun () ->
+            this.pending <- ""
+            this.refresh ())
+      let links =
+        o.ports |> Array.map (fun p -> html $"""<div><a href={p.url} target="_blank" rel="noopener">{p.url}</a></div>""")
+      let title = if o.title <> "" then html $"""<div class="other-title">{o.title}</div>""" else nothing
+      html $"""<tr>
+<td title={o.dir}><b>{o.project}</b>{title}</td><td>{badge o.kind}</td><td>{links}</td>
+<td title={o.command}>{string o.pid}</td><td>{o.uptime}</td><td title={o.chain}>{o.by}</td>
+<td class="row-actions"><button class="icon" title="open" ?disabled={firstUrl.IsNone} @click={openIt}>↗</button>
+<button class="icon" title="stop (SIGTERM)" ?disabled={c.demo || this.pending <> ""} @click={stopIt}>■</button></td></tr>"""
+    let body =
+      if others.Length = 0 then
+        html $"""<p class="empty">No other dev or web server listens here. Servers no smoothdev-web launch started (a Vite, a dotnet watch, an http.server...) show up here.</p>"""
+      else
+        html $"""<table><tr><th>project</th><th>kind</th><th>url</th><th>pid</th><th>up</th><th>by</th><th></th></tr>{others |> Array.map row}</table>"""
+    html $"""
+<div class="card others">
+  <h3>Other running instances · {string others.Length}</h3>
+  {body}
+</div>"""
+
   /// A scan hit that is not a site: what runs for it, with links, and how to drive it.
   member this.appView (c: Console) (r: ScanRow) =
     let live = runningFor c.running r
@@ -358,7 +403,7 @@ th {{ color: var(--sd-muted); font-weight: 500; }}
 </header>
 <main>
   {this.sidebar c}
-  <section class="content">{banner}{this.runningCard c}{body}{this.launchesCard c}{unmounted}</section>
+  <section class="content">{banner}{this.runningCard c}{body}{this.launchesCard c}{this.othersCard c}{unmounted}</section>
 </main>
 <div class="messages">{toasts}</div>"""
 

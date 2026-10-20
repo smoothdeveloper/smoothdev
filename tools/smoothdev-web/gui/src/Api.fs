@@ -37,6 +37,10 @@ type Act =
 let act (a: Act) (site: string) (onDone: unit -> unit) =
   finish (postJson "./api/action" (createObj [ "action" ==> a.word; "site" ==> site ])) (fun _ -> onDone ()) (fun _ -> onDone ())
 
+/// SIGTERM to another running instance; the tool only signals one it lists itself.
+let stopOther (pid: int) (onDone: unit -> unit) =
+  finish (postJson "./api/others/stop" (createObj [ "pid" ==> pid ])) (fun _ -> onDone ()) (fun _ -> onDone ())
+
 type LogLines = { name: string; lines: string array }
 
 [<Emit("encodeURIComponent($0)")>]

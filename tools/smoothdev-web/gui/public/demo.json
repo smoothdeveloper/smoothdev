@@ -177,6 +177,42 @@
       "uptime": "3m10s"
     }
   ],
+  "others": [
+    {
+      "pid": 51234,
+      "project": "storybook-lab/web",
+      "dir": "~/src/storybook-lab/web",
+      "kind": "vite",
+      "command": "node /Users/me/src/storybook-lab/web/node_modules/.bin/vite --port 5173",
+      "title": "Storybook lab",
+      "uptime": "2h14m",
+      "by": "code",
+      "chain": "zsh (51200) <- code (812)",
+      "ports": [
+        {
+          "port": 5173,
+          "url": "http://127.0.0.1:5173/"
+        }
+      ]
+    },
+    {
+      "pid": 61002,
+      "project": "notes",
+      "dir": "~/notes",
+      "kind": "python http.server",
+      "command": "python3 -m http.server 8000",
+      "title": "Directory listing for /",
+      "uptime": "5m",
+      "by": "Terminal",
+      "chain": "-zsh (60990) <- login (60988) <- Terminal (700)",
+      "ports": [
+        {
+          "port": 8000,
+          "url": "http://127.0.0.1:8000/"
+        }
+      ]
+    }
+  ],
   "messages": [],
   "launches": [
     {

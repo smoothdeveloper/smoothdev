@@ -89,6 +89,23 @@ type Launch =
     started : string   // how long ago
     ports   : LaunchPort array }
 
+type OtherPort =
+  { port : int
+    url  : string }
+
+/// A dev or web server listening on this machine that no launch holds (`smoothdev-web others`).
+type Other =
+  { pid     : int
+    project : string   // repository folder (and the folder inside it), else the folder's name
+    dir     : string
+    kind    : string   // vite, webpack, next, nacara, dotnet watch, fable watch, npm script, ...
+    command : string
+    title   : string   // the page's <title>, "" when none
+    uptime  : string
+    by      : string
+    chain   : string
+    ports   : OtherPort array }
+
 type Console =
   { root      : string
     demo      : bool
@@ -100,6 +117,7 @@ type Console =
     busy      : string
     running   : Running array
     launches  : Launch array
+    others    : Other array
     messages  : Message array }
 
 /// Scan hits grouped by their first folder (a repository under a workspace), groups in path order,
