@@ -4,6 +4,7 @@
     <IsPackable>false</IsPackable>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="../../gui/src/Model.fs" Link="Gui/Model.fs" />
     <Compile Include="Tests.fs" />
   </ItemGroup>
   <ItemGroup>

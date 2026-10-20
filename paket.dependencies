@@ -12,6 +12,9 @@ nuget Spectre.Console
 nuget UnMango.CliWrap.FSharp
 nuget Partas.TypeProvider.BuildHelper
 
+// tools/smoothdev-web/gui (Lit web components in F#, compiled by vite-plugin-fable)
+nuget Firelight 0.3.0
+
 // tests
 nuget Expecto
 

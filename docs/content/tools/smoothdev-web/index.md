@@ -24,4 +24,6 @@ An ASP.NET server has to listen on the URL the tool passed. That contract is [AS
 
 A Vite `server.proxy` entry has to target `SMOOTHDEV_WEB_SERVER_URL`. That contract is [Vite proxy](vite-proxy.md).
 
+A documentation site and the Vite apps it hosts (found, mounted, run behind one port, published together) are [Docs sites and Vite apps](sites.md).
+
 How starting, finding and stopping a process tree differ between Linux, macOS and Windows is [Platform differences](platforms.md).

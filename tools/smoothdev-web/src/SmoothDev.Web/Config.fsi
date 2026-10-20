@@ -78,3 +78,11 @@ type ScanView =
   member Add: row: ScanRow -> unit
   member Commit: unit -> unit
   member Rows: unit -> ScanRow array
+
+// Used by Sites (detection of documentation sites and the Vite apps they host).
+val packageName: dir: string -> string option
+val detectFable: clientDir: string -> Fable
+val detectDist: clientDir: string -> string
+val detectPm: dirs: string array -> PackageManager
+val findProjects: depth: int -> dir: string -> string array
+val findViteApps: depth: int -> dir: string -> string array

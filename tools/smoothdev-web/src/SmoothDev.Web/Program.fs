@@ -24,13 +24,18 @@ Commands:
                              without a target: dev, else prod, else preview, else dist
   logs [name...] [-f] [-n N] print the last N lines (default 40) of component logs; -f follows them
   stop                       stop everything this app runs
-  scan [tui|gui]            list Vite apps, Web SDK projects and smoothdev.web.json files under this folder;
+  scan [tui|gui [--classic]] list Vite apps, Web SDK projects and smoothdev.web.json files under this folder;
                             tui and gui fold the folder tree and open an app with the same controls as `tui` or `gui` in that folder
                              tui or gui show hits as the walk finds them
   tui                        terminal UI
   gui [--port N] [--detach]  web GUI served by the tool on 127.0.0.1; --detach runs it in the background
                              (tracked like the other components: `stop` or the GUI's own stop ends it)
-  config [show|diff|init]   print the resolved config, how the file differs from detection, or write it
+  config [show|diff|init]    print the resolved config, how the file differs from detection, or write it
+  site [plan] [--json]       documentation sites (Nacara) under this folder, the Vite apps they host, and why
+  site dev [--port N]        the site's dev server, each mounted Vite app under its base, one front port
+  site stop|status           stop / list what `site dev` and `site preview` started
+  site dist                  the site's build, with each mounted app built into its route (.smoothdev/web/site-dist)
+  site preview               serve the site dist as a static host would
 
 Options:
   --dir <path>    the app folder (default: current folder; the nearest smoothdev.web.json above it wins)
@@ -196,6 +201,49 @@ let rec globals (args: string list) dir browser rest =
   | a :: tail              -> globals tail dir browser (a :: rest)
   | []                     -> dir, browser, List.rev rest
 
+/// `site dev|stop|status|dist|preview`: the first site the plan finds under dir (or `--site <name>`).
+let site (dir: string) (browser: bool) (sub: string list) =
+  let plan = Sites.plan dir
+  let named, sub =
+    match sub with
+    | "--site" :: name :: rest -> Some name, rest
+    | _ -> None, sub
+  let wait (t: Threading.Tasks.Task<Result<'a, string>>) =
+    match t.GetAwaiter().GetResult() with
+    | Ok _ -> 0
+    | Error _ -> 1
+  let chosen =
+    match named with
+    | Some n -> plan.sites |> Array.tryFind (fun s -> s.name = n)
+    | None -> plan.sites |> Array.tryHead
+  match chosen with
+  | None ->
+    say Fail $"no Nacara site under {dir}"
+    1
+  | Some s ->
+    if plan.sites.Length > 1 && named.IsNone then
+      say Warn $"{plan.sites.Length} sites found: using {s.name} ({s.project}); choose with --site <name>"
+    let ctx: Actions.Context =
+      { config = SiteActions.configFor s; say = say; echo = echo; browser = browser }
+    match sub with
+    | [ "dev" ]
+    | [ "dev"; "start" ] -> wait (SiteActions.devStart ctx plan s None)
+    | [ "dev"; "--port"; p ]
+    | [ "dev"; "start"; "--port"; p ] -> wait (SiteActions.devStart ctx plan s (Some(int p)))
+    | [ "stop" ]
+    | [ "dev"; "stop" ] -> wait (SiteActions.stop ctx)
+    | [ "dist" ] -> wait (SiteActions.dist ctx plan s)
+    | [ "preview" ] -> wait (SiteActions.preview ctx plan s)
+    | [ "status" ] ->
+      let live = State.live s.repo |> Array.filter (fun e -> e.name.StartsWith "site-")
+      if live.Length = 0 then printfn "nothing running"
+      for e in live do
+        printfn "%-24s pid %-6d %s" e.name e.pid e.url
+      0
+    | _ ->
+      eprintf $"%s{usage}"
+      2
+
 let rec logOptions (args: string list) names follow count =
   match args with
   | ("-f" | "--follow") :: tail     -> logOptions tail names true count
@@ -246,7 +294,20 @@ let run (fromDir: string) (ctx: Actions.Context) (argv: string array) (command: 
 
 [<EntryPoint>]
 let main argv =
+  if not (OperatingSystem.IsWindows()) then
+    ProcessManagement.Posix.followerArgv <- Runner.selfArgv ()
   match List.ofArray argv with
+  | [ "__follow"; log ] when not (OperatingSystem.IsWindows()) ->
+    ProcessManagement.Posix.copyAll 0 log
+    0
+  | "__front" :: port :: siteBase :: routes ->
+    let parsed = routes |> List.map FrontProxy.parseRoute
+    match parsed |> List.tryPick (function Error e -> Some e | Ok _ -> None) with
+    | Some e ->
+      eprintfn "%s" e
+      2
+    | None ->
+      FrontProxy.run (int port) siteBase [| for r in parsed do match r with Ok r -> yield r | Error _ -> () |]
   | [ "__serve-static"; dir; urlBase; port ] ->
     StaticServer.run dir urlBase (int port)
   | [ "--version" ] ->
@@ -298,9 +359,30 @@ let main argv =
         Config.saveScanCache dir visited (fresh.ToArray())
         eprintfn "done  %d folders" visited
         0
+    | [ "site" ]
+    | [ "site"; "plan" ] ->
+      let plan = Sites.plan dir
+      printf "%s" (Sites.describe plan)
+      for site in plan.sites do
+        printfn "dev wiring for %s (`smoothdev-web site dev`):" site.name
+        for line in SiteActions.devLines plan site do
+          printfn "  %s" line
+      0
+    | [ "site"; "--json" ]
+    | [ "site"; "plan"; "--json" ] ->
+      printfn "%s" (Sites.toJson (Sites.plan dir))
+      0
+    | "site" :: sub -> site dir browser sub
     | [ "scan"; "tui" ] -> Tui.scan dir
-    | [ "scan"; "gui" ] -> Gui.scan dir None
-    | [ "scan"; "gui"; "--port"; port ] -> Gui.scan dir (Some(int port))
+    | "scan" :: "gui" :: rest ->
+      let classic = List.contains "--classic" rest
+      let port =
+        match rest |> List.filter ((<>) "--classic") with
+        | [ "--port"; p ] -> Some(int p)
+        | _ -> None
+      match WebConsole.assets () with
+      | Some assets when not classic -> WebConsole.run dir assets port browser
+      | _ -> Gui.scan dir port
     | _ when not (OperatingSystem.IsMacOS() || OperatingSystem.IsLinux() || OperatingSystem.IsWindows()) ->
       say Fail "smoothdev-web runs on macOS, Linux and Windows"
       1

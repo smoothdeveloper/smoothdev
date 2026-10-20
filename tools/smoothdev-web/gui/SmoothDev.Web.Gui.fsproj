@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- The smoothdev-web console: Lit web components written in F# (Firelight), compiled by vite-plugin-fable. -->
+  <PropertyGroup>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="src/Model.fs" />
+    <Compile Include="src/Api.fs" />
+    <Compile Include="src/Theme.fs" />
+    <Compile Include="src/Components.fs" />
+    <Compile Include="src/Console.fs" />
+  </ItemGroup>
+  <Import Project="..\..\..\.paket\Paket.Restore.targets" />
+</Project>

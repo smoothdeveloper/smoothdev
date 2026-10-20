@@ -23,19 +23,27 @@
     <Compile Include="Ports.fs" />
     <Compile Include="Config.fsi" />
     <Compile Include="Config.fs" />
+    <Compile Include="Sites.fs" />
     <Compile Include="ProcessManagement.fs" />
     <Compile Include="State.fs" />
     <Compile Include="DocLink.fs" />
     <Compile Include="Runner.fs" />
     <Compile Include="StaticServer.fs" />
+    <Compile Include="FrontProxy.fs" />
     <Compile Include="Actions.fs" />
+    <Compile Include="SiteActions.fs" />
     <Compile Include="Tui.fs" />
     <Compile Include="Gui.fs" />
+    <Compile Include="WebConsole.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="../../README.md" Pack="true" PackagePath="/" />
     <InternalsVisibleTo Include="SmoothDev.Web.Tests" />
+    <!-- the console page, built from ../../gui (pnpm build there): shipped as gui/ next to the tool -->
+    <None Include="../../gui/dist/**" Condition="Exists('../../gui/dist/index.html')"
+          Link="gui/%(RecursiveDir)%(Filename)%(Extension)"
+          CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
   <Import Project="..\..\..\..\.paket\Paket.Restore.targets" />
 </Project>

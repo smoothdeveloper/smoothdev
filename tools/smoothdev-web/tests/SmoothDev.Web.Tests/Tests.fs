@@ -7,6 +7,7 @@ open System.Net.Sockets
 open System.Threading
 open Expecto
 open SmoothDev.Web
+open SmoothDev.Web.Gui
 
 /// A fresh temporary folder, deleted when disposed.
 type TempDir() =
@@ -648,7 +649,292 @@ let guiPage =
       }
     ]
 
-let tests = testList "smoothdev.web" [ ports; config; tracking; staticServer; guiPage ]
+
+/// A Nacara site in docs/ (base from site-root.txt, static folder public/) and Vite apps around it.
+let siteFixture (dir: TempDir) =
+  Directory.CreateDirectory(Path.Combine(dir.path, ".git")) |> ignore
+  dir.write "docs/Docs.fsproj" """<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup><Compile Include="Site.fs" /></ItemGroup>
+  <Target Name="BuildExplorer" BeforeTargets="BeforeBuild">
+    <Exec Command="pnpm --filter demo-explorer run build" WorkingDirectory=".." />
+  </Target>
+</Project>""" |> ignore
+  dir.write "docs/paket.references" "FSharp.Core\nNacara.Core\n" |> ignore
+  dir.write "docs/site-root.txt" "https://example.org\n/demo/\n" |> ignore
+  dir.write "docs/Site.fs" """module Docs.Site
+let theme =
+  Theme.defaults
+  |> Theme.navbar
+    [ NavbarSection("Guide", "guide", "/guide/introduction/")
+      NavbarLink("Playground", "/playground/") ]
+let site =
+  Site.create "demo"
+  |> Site.baseUrl baseUrl
+  |> Site.output "output"
+  |> Site.staticFiles "public"
+  |> Site.collection (Theme.docs theme "content")
+[<EntryPoint>]
+let main argv = Nacara.run site argv""" |> ignore
+  dir.write "docs/content/index.md" "# home" |> ignore
+  dir.write "docs/content/guide/introduction.md" "# intro" |> ignore
+  dir.write "docs/content/tools/web/index.md" "# web tool" |> ignore
+  // linked by the navbar, with hand-written dev routes
+  dir.write "playground/package.json" """{ "name": "demo-playground", "devDependencies": { "vite": "8.0.0", "vite-plugin-fable": "0.5.2" } }""" |> ignore
+  dir.write "playground/index.html" "<script type=module src=./src/App.fs></script>" |> ignore
+  dir.write "playground/vite.config.js" """export default { plugins: [fable(), { configureServer(server) {} }], server: { port: 5174, strictPort: true } }""" |> ignore
+  // built into the site's static folder
+  dir.write "tools/explorer/package.json" """{ "name": "demo-explorer", "devDependencies": { "vite": "8.0.0" } }""" |> ignore
+  dir.write "tools/explorer/index.html" "<p>explorer</p>" |> ignore
+  dir.write "tools/explorer/vite.config.js" """export default { base: "./", server: { port: 5175 }, build: { outDir: "../../docs/public/explorer", emptyOutDir: true } }""" |> ignore
+  // a page app under a content section, nothing else says where it goes
+  dir.write "tools/web/gui/package.json" """{ "name": "web-gui", "devDependencies": { "vite": "8.0.0" } }""" |> ignore
+  dir.write "tools/web/gui/index.html" "<p>gui</p>" |> ignore
+  // a library build
+  dir.write "wasm/package.json" """{ "name": "demo-wasm", "devDependencies": { "vite": "8.0.0" } }""" |> ignore
+  dir.write "wasm/vite.config.mts" """export default { build: { outDir: "../out/wasm", lib: { entry: { processor: "./P.fs" }, formats: ["es"] } } }""" |> ignore
+
+let sites =
+  testList
+    "sites"
+    [
+      test "a Nacara site: base, output, static folder, navbar, pages, build hooks" {
+        use dir = new TempDir()
+        siteFixture dir
+        let plan = Sites.plan dir.path
+        Expect.equal plan.sites.Length 1 "one site"
+        let s = plan.sites[0]
+        Expect.equal s.name "demo" "Site.create"
+        Expect.equal s.baseUrl "/demo/" "base from site-root.txt"
+        Expect.equal s.output (Path.Combine(dir.path, "docs", "output")) "output"
+        Expect.equal s.statics (Some(Path.Combine(dir.path, "docs", "public"))) "static folder"
+        Expect.contains s.links ("Playground", "playground/") "navbar link"
+        Expect.contains s.pages "guide/introduction/" "content page route"
+        Expect.contains s.pages "" "home page"
+        Expect.equal s.hooks [| "pnpm --filter demo-explorer run build" |] "Exec commands"
+      }
+
+      test "mounts: static folder, navbar link, content section convention; a library is not mounted" {
+        use dir = new TempDir()
+        siteFixture dir
+        let plan = Sites.plan dir.path
+        let byDir d = plan.mounts |> Array.find (fun m -> m.app.dir = Path.Combine(dir.path, d))
+        let explorer = byDir "tools/explorer"
+        Expect.equal (explorer.url, explorer.kind, explorer.confidence) ("/demo/explorer/", Sites.StaticFolder, Sites.High) "explorer"
+        Expect.isTrue (explorer.reasons |> Array.exists (fun r -> r.Contains "--filter demo-explorer")) "the build hook is a reason"
+        let playground = byDir "playground"
+        Expect.equal (playground.url, playground.kind, playground.confidence) ("/demo/playground/", Sites.Linked, Sites.Medium) "playground"
+        Expect.equal playground.app.port (Some 5174) "server.port"
+        Expect.isTrue playground.app.middleware "configureServer"
+        Expect.isFalse playground.pageOwned "no content page at playground/"
+        let gui = byDir "tools/web/gui"
+        Expect.equal (gui.url, gui.kind, gui.confidence) ("/demo/tools/web/gui/", Sites.Convention, Sites.Low) "gui under the tools/web section"
+        let wasm = plan.unmounted |> Array.exactlyOne
+        Expect.stringContains wasm.reason "library" "wasm is a library build"
+      }
+
+      test "a content page at the app's route keeps the page in dist" {
+        use dir = new TempDir()
+        siteFixture dir
+        dir.write "docs/content/playground/index.md" "<div id=root></div>" |> ignore
+        let plan = Sites.plan dir.path
+        let playground = plan.mounts |> Array.find (fun m -> m.app.name = "demo-playground")
+        Expect.isTrue playground.pageOwned "page owned"
+      }
+
+      test "smoothdev.site.json sets a route or drops an app" {
+        use dir = new TempDir()
+        siteFixture dir
+        dir.write "smoothdev.site.json" """{ "apps": { "tools/web/gui": { "route": "/console" }, "playground": { "mount": false } } }""" |> ignore
+        let plan = Sites.plan dir.path
+        let gui = plan.mounts |> Array.find (fun m -> m.app.name = "web-gui")
+        Expect.equal (gui.url, gui.kind) ("/demo/console/", Sites.Configured) "route from the file"
+        Expect.isTrue (plan.unmounted |> Array.exists (fun u -> u.app.name = "demo-playground")) "playground dropped"
+      }
+
+      test "no site: apps are listed, not mounted" {
+        use dir = new TempDir()
+        dir.write "web/package.json" """{ "name": "w", "devDependencies": { "vite": "8.0.0" } }""" |> ignore
+        dir.write "web/index.html" "<p/>" |> ignore
+        let plan = Sites.plan dir.path
+        Expect.isEmpty plan.sites "no site"
+        Expect.equal (plan.unmounted |> Array.map _.reason) [| "no Nacara site found" |] "reason"
+      }
+
+      test "a project that does not call Nacara.run is not a site" {
+        use dir = new TempDir()
+        dir.write "x/X.fsproj" """<Project><ItemGroup><PackageReference Include="Nacara.Core" /><Compile Include="A.fs" /></ItemGroup></Project>""" |> ignore
+        dir.write "x/A.fs" "module A" |> ignore
+        Expect.isEmpty (Sites.plan dir.path).sites "no Nacara.run"
+      }
+
+      test "plan JSON names sites, mounts and reasons" {
+        use dir = new TempDir()
+        siteFixture dir
+        let json = Sites.toJson (Sites.plan dir.path)
+        use doc = Text.Json.JsonDocument.Parse json
+        let mounts = doc.RootElement.GetProperty("mounts")
+        Expect.equal (mounts.GetArrayLength()) 3 "three mounts"
+        Expect.stringContains json "\"kind\": \"static-folder\"" "kind"
+      }
+    ]
+
+/// The layout of a tool repository documenting itself: a Nacara site in docs/ without a static folder,
+/// content pages per tool under tools/<tool>/, and (later) a Vite app next to a tool.
+let selfDocFixture (dir: TempDir) =
+  Directory.CreateDirectory(Path.Combine(dir.path, ".git")) |> ignore
+  dir.write "docs/Docs.fsproj" """<Project Sdk="Microsoft.NET.Sdk"><ItemGroup><Compile Include="Site.fs" /></ItemGroup></Project>""" |> ignore
+  dir.write "docs/paket.references" "FSharp.Core\nNacara.Core\n" |> ignore
+  dir.write "docs/site-root.txt" "https://example.org\n/kit/\n" |> ignore
+  dir.write "docs/Site.fs" """module Docs.Site
+let site =
+  Site.create "kit"
+  |> Site.baseUrl baseUrl
+  |> Site.collection (Theme.docs theme "content")
+[<EntryPoint>]
+let main argv = Nacara.run site argv""" |> ignore
+  dir.write "docs/content/index.md" "# kit" |> ignore
+  dir.write "docs/content/tools/kit-web/index.md" "# the web tool" |> ignore
+  dir.write "tools/kit-web/src/Kit.Web.fsproj" "<Project />" |> ignore
+
+let addGui (dir: TempDir) =
+  dir.write "tools/kit-web/gui/package.json" """{ "name": "kit-web-gui", "dependencies": { "lit": "3.3.0" }, "devDependencies": { "vite": "8.0.0", "vite-plugin-fable": "0.5.2" } }""" |> ignore
+  dir.write "tools/kit-web/gui/index.html" "<kit-console></kit-console>" |> ignore
+  dir.write "tools/kit-web/gui/vite.config.mts" """export default { base: "./", plugins: [fable()], server: { port: 5401 }, build: { outDir: "dist" } }""" |> ignore
+
+let selfDoc =
+  testList
+    "a site documenting its own tools"
+    [
+      test "the site alone: found, nothing mounted, dev runs the site behind the front" {
+        use dir = new TempDir()
+        selfDocFixture dir
+        let plan = Sites.plan dir.path
+        let s = Expect.wantSome (Array.tryExactlyOne plan.sites) "one site"
+        Expect.equal s.baseUrl "/kit/" "base"
+        Expect.isNone s.statics "no static folder"
+        Expect.isEmpty plan.mounts "no app yet"
+        let lines = SiteActions.devLines plan s
+        Expect.isTrue (lines |> Array.exists (fun l -> l.StartsWith(SiteActions.siteName: string))) "the site's watch"
+        Expect.isTrue (lines |> Array.exists (fun l -> l.StartsWith(SiteActions.frontName: string))) "the front"
+      }
+
+      test "a Vite app added next to a tool is mounted under that tool's section" {
+        use dir = new TempDir()
+        selfDocFixture dir
+        addGui dir
+        let plan = Sites.plan dir.path
+        let m = Expect.wantSome (Array.tryExactlyOne plan.mounts) "one mount"
+        Expect.equal (m.url, m.kind) ("/kit/tools/kit-web/gui/", Sites.Convention) "under tools/kit-web/"
+        Expect.isFalse m.pageOwned "no page there: dist takes the app's build"
+        let lines = SiteActions.devLines plan plan.sites[0]
+        Expect.isTrue (lines |> Array.exists (fun l -> l.Contains "--base /kit/tools/kit-web/gui/")) "vite gets the mount as base"
+      }
+    ]
+
+let console =
+  testList
+    "console"
+    [
+      let row path kind : Model.ScanRow = { path = path; kind = kind; note = "" }
+
+      test "scan rows group by first folder, sites first" {
+        let groups = Model.groups [| row "b/web" "vite"; row "a/docs/Docs.fsproj" "site"; row "a/play" "vite"; row "x" "config" |]
+        Expect.equal (groups |> Array.map fst) [| "."; "a"; "b" |] "groups in path order"
+        Expect.equal (snd groups[1] |> Array.map _.kind) [| "site"; "vite" |] "site first"
+      }
+
+      test "filter keeps rows with every word" {
+        let rows = [| row "acme/playground" "vite"; row "acme/docs/Docs.fsproj" "site"; row "other/web" "vite" |]
+        Expect.equal (Model.filter "acme vite" rows |> Array.map _.path) [| "acme/playground" |] "both words"
+        Expect.equal (Model.filter "  " rows).Length 3 "empty query keeps all"
+      }
+
+      test "the console JSON reads back as the page's model, routes longest first" {
+        use dir = new TempDir()
+        siteFixture dir
+        let state = WebConsole.State dir.path
+        state.Rescan()
+        let started = DateTime.Now
+        while (state.Scanning || state.Plan.IsNone) && DateTime.Now - started < TimeSpan.FromSeconds 20.0 do
+          Threading.Thread.Sleep 50
+        state.Say Success "hello"
+        let c = Text.Json.JsonSerializer.Deserialize<Model.Console>(WebConsole.consoleJson state) |> nonNull
+        Expect.isFalse c.demo "live"
+        let s = c.sites |> Array.exactlyOne
+        Expect.equal s.baseUrl "/demo/" "base"
+        Expect.equal s.mounts.Length 3 "mounts"
+        Expect.isNone s.front "nothing runs"
+        Expect.isTrue (c.scan |> Array.exists (fun r -> r.kind = "site" && Model.siteOfRow c.sites r = Some s)) "scan row finds its site"
+        let routes = Model.routes s
+        Expect.equal (Array.last routes).prefix "/demo/" "the site last"
+        Expect.isTrue (routes |> Array.pairwise |> Array.forall (fun (a, b) -> a.prefix.Length >= b.prefix.Length)) "longest first"
+        Expect.equal (c.unmounted |> Array.map _.app.name) [| "demo-wasm" |] "library unmounted"
+        Expect.equal (Model.toasts c.messages |> Array.map _.text) [| "hello" |] "a fresh message is a toast"
+        Expect.equal (Model.confidenceLevel "high", Model.confidenceLevel "?") (3, 0) "meter"
+      }
+    ]
+
+let front =
+  testList
+    "front proxy"
+    [
+      let routes =
+        [| "/demo/app/=http://127.0.0.1:5174"; "/=http://127.0.0.1:8080" |]
+        |> Array.map (FrontProxy.parseRoute >> ok)
+
+      test "longest prefix wins; the site is the fallback" {
+        Expect.equal (FrontProxy.pick routes "/demo/app/src/App.fs.js?t=1").Value.port 5174 "app"
+        Expect.equal (FrontProxy.pick routes "/demo/guide/").Value.port 8080 "site"
+      }
+
+      test "redirects: / to the base, an app without its slash" {
+        Expect.equal (FrontProxy.decide routes "/demo/" "/") (FrontProxy.Redirect "/demo/") "root"
+        Expect.equal (FrontProxy.decide routes "/demo/" "/demo/app?x=1") (FrontProxy.Redirect "/demo/app/?x=1") "slash"
+        Expect.equal (FrontProxy.decide routes "/demo/" "/__front") FrontProxy.Health "health"
+      }
+
+      test "Connection: close unless upgrading" {
+        let head = "GET / HTTP/1.1\r\nHost: x\r\nConnection: keep-alive\r\n\r\n"
+        Expect.equal (FrontProxy.rewriteHead head) "GET / HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n" "close"
+        let ws = "GET /ws HTTP/1.1\r\nHost: x\r\nConnection: Upgrade\r\nUpgrade: websocket\r\n\r\n"
+        Expect.equal (FrontProxy.rewriteHead ws) ws "upgrade untouched"
+      }
+
+      testTask "forwards to two upstreams on one port" {
+        let serve (body: string) =
+          let port = Ports.pick [||] 47100
+          let listener = new HttpListener()
+          listener.Prefixes.Add $"http://127.0.0.1:{port}/"
+          listener.Start()
+          Tasks.Task.Run(fun () ->
+            while listener.IsListening do
+              let c = listener.GetContext()
+              let bytes = Text.Encoding.UTF8.GetBytes $"{body} {c.Request.RawUrl}"
+              c.Response.OutputStream.Write(bytes, 0, bytes.Length)
+              c.Response.Close()) |> ignore
+          port
+        let site = serve "site"
+        let app = serve "app"
+        let frontPort = Ports.pick [| site; app |] 47200
+        let routes =
+          [| $"/demo/app/=http://127.0.0.1:{app}"; $"/=http://127.0.0.1:{site}" |]
+          |> Array.map (FrontProxy.parseRoute >> ok)
+        Threading.Thread((fun () -> FrontProxy.run frontPort "/demo/" routes |> ignore), IsBackground = true).Start()
+        let client = new Net.Http.HttpClient()
+        let mutable up = false
+        while not up do
+          try
+            let! _ = client.GetStringAsync $"http://127.0.0.1:{frontPort}/__front"
+            up <- true
+          with _ -> do! Tasks.Task.Delay 50
+        let! a = client.GetStringAsync $"http://127.0.0.1:{frontPort}/demo/app/x.js"
+        let! b = client.GetStringAsync $"http://127.0.0.1:{frontPort}/demo/guide/"
+        Expect.equal a "app /demo/app/x.js" "app route"
+        Expect.equal b "site /demo/guide/" "site route"
+      }
+    ]
+
+let tests = testList "smoothdev.web" [ ports; config; tracking; staticServer; guiPage; sites; selfDoc; console; front ]
 
 [<EntryPoint>]
 let main argv = runTestsWithCLIArgs [] argv tests
