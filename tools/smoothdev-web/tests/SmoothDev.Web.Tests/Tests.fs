@@ -562,6 +562,22 @@ garbage line
           Expect.stringContains text $"id=\"{fragment}\"" "the fragment on the link is in the page"
         }
 
+      test "the proxy probe runs in node and reads server.proxy with the server URL" {
+        use dir = new TempDir()
+        // a stand-in for vite: resolveConfig answers what a config reading SMOOTHDEV_WEB_SERVER_URL would
+        let vite = Path.Combine(dir.path, "node_modules", "vite")
+        Directory.CreateDirectory vite |> ignore
+        File.WriteAllText(Path.Combine(vite, "package.json"), """{ "name": "vite", "type": "module", "exports": "./index.js" }""")
+
+        File.WriteAllText(
+          Path.Combine(vite, "index.js"),
+          """export const resolveConfig = async () => { console.log("vite banner"); return { server: { proxy: { "/api": { target: process.env.SMOOTHDEV_WEB_SERVER_URL }, "/ws": "ws://elsewhere" } } } }"""
+        )
+
+        let proxies = (Actions.readViteProxy dir.path "http://127.0.0.1:5002/").Result |> ok
+        Expect.equal proxies [| { prefix = "/api"; target = "http://127.0.0.1:5002" }; { prefix = "/ws"; target = "ws://elsewhere" } |] "rows"
+      }
+
       test "vite proxy warning names the prefixes that miss the dev server" {
         let server = "http://127.0.0.1:5002"
         Expect.isNone (Actions.viteProxyWarning server [| { prefix = "/api"; target = "http://localhost:5002" } |]) "localhost is the same server"

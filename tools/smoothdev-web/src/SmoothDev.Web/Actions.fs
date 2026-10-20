@@ -270,7 +270,8 @@ let viteProxyWarning (serverUrl: string) (proxies: ViteProxy array) =
       |> String.concat ", "
     Some $"Vite proxies {listed}. None of those is the dev server at {serverUrl}. {Runner.viteProxyDoc}"
 
-let private viteProxyScript =
+/// Triple-quoted, so `\n` reaches node as the two characters of a JS escape.
+let internal viteProxyScript =
   """import { resolveConfig } from "vite";
 const proxyMarker = "@@smoothdev-web-proxy@@";
 const config = await resolveConfig({}, "serve");
@@ -283,9 +284,7 @@ for (const [prefix, value] of Object.entries(proxy)) {
   else if (value && value.target) target = String(value.target);
   rows.push({ prefix, target });
 }
-process.stdout.write("
-" + proxyMarker + JSON.stringify(rows) + "
-");
+process.stdout.write("\n" + proxyMarker + JSON.stringify(rows) + "\n");
 """
 
 let private proxyMarker = "@@smoothdev-web-proxy@@"
