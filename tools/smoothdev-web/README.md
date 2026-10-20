@@ -318,8 +318,9 @@ keep running until `stop`.
 
 - Each component is started with `posix_spawn` as the **leader of a new process group**, stdin from
   `/dev/null`, stdout and stderr appended to its log file, signal dispositions reset (so a child does
-  not inherit an ignored `SIGPIPE`). It survives the terminal that started it, and Ctrl+C in that
-  terminal does not reach it.
+  not inherit an ignored `SIGPIPE`), and no other descriptor of the tool kept open, so
+  `smoothdev-web dev start | tee start.log` ends when the command does. It survives the terminal
+  that started it, and Ctrl+C in that terminal does not reach it.
 - `.smoothdev/web/state.json` in the app root records name, PID, group, port, URL, log, command,
   start time and owner. Writes are atomic under a lock file. Entries whose processes are gone are
   dropped on the next read; a recorded PID only counts if it still leads its recorded group (PID reuse).

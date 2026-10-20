@@ -207,7 +207,14 @@ module Posix =
     extern int close(int fd)
 
     [<DllImport("libc")>]
+    extern int dup(int fd)
+
+    [<DllImport("libc")>]
     extern int fcntl(int fd, int cmd, int arg)
+
+    // glibc 2.34+; older glibc lacks it (EntryPointNotFoundException)
+    [<DllImport("libc")>]
+    extern int posix_spawn_file_actions_addclosefrom_np(nativeint actions, int from)
 
   let SIGHUP = 1
   let SIGINT = 2
@@ -224,6 +231,8 @@ module Posix =
   let POSIX_SPAWN_SETPGROUP = 0x2s
   let POSIX_SPAWN_SETSIGDEF = 0x4s
   let POSIX_SPAWN_SETSIGMASK = 0x8s
+  /// macOS: the child gets only the fds the file actions name (0, 1, 2)
+  let POSIX_SPAWN_CLOEXEC_DEFAULT = 0x4000s
   let F_SETFD = 2
   let FD_CLOEXEC = 1
 
@@ -233,6 +242,21 @@ module Posix =
   let mutable followerArgv: string array = [||]
 
   let lastErrno () = Marshal.GetLastPInvokeError()
+
+  /// The spawn flags, and every fd above 2 closed in the child. Without it, an fd of this process
+  /// that is not close-on-exec, such as a copy of its stdout, stays open in a component that
+  /// outlives it: a caller reading `smoothdev-web dev start | …` would then wait for that
+  /// component to exit.
+  let private closeOthers (attr: nativeint) (actions: nativeint) (flags: int16) =
+    if isMac then
+      Native.posix_spawnattr_setflags (attr, flags ||| POSIX_SPAWN_CLOEXEC_DEFAULT) |> ignore
+    else
+      Native.posix_spawnattr_setflags (attr, flags) |> ignore
+
+      try
+        Native.posix_spawn_file_actions_addclosefrom_np (actions, 3) |> ignore
+      with :? EntryPointNotFoundException ->
+        ()
 
   /// A NULL-terminated char*[] of UTF-8 strings; free with freeStrings.
   let allocStrings (items: string array) =
@@ -288,13 +312,13 @@ module Posix =
 
       try
         Native.posix_spawnattr_init attr |> ignore
-        Native.posix_spawnattr_setflags (attr, POSIX_SPAWN_SETPGROUP ||| POSIX_SPAWN_SETSIGDEF ||| POSIX_SPAWN_SETSIGMASK) |> ignore
         Native.posix_spawnattr_setpgroup (attr, 0) |> ignore
         Native.sigemptyset signals |> ignore
         Native.posix_spawnattr_setsigmask (attr, signals) |> ignore
         [| SIGINT; SIGQUIT; SIGPIPE; SIGTERM; SIGCHLD |] |> Array.iter (fun s -> Native.sigaddset (signals, s) |> ignore)
         Native.posix_spawnattr_setsigdefault (attr, signals) |> ignore
         Native.posix_spawn_file_actions_init actions |> ignore
+        closeOthers attr actions (POSIX_SPAWN_SETPGROUP ||| POSIX_SPAWN_SETSIGDEF ||| POSIX_SPAWN_SETSIGMASK)
         Native.posix_spawn_file_actions_adddup2 (actions, master, 0) |> ignore
         Native.posix_spawn_file_actions_addopen (actions, 1, "/dev/null", O_WRONLY, 0) |> ignore
         Native.posix_spawn_file_actions_adddup2 (actions, 1, 2) |> ignore
@@ -325,9 +349,6 @@ module Posix =
     try
       Native.posix_spawnattr_init attr |> ignore
 
-      Native.posix_spawnattr_setflags (attr, POSIX_SPAWN_SETPGROUP ||| POSIX_SPAWN_SETSIGDEF ||| POSIX_SPAWN_SETSIGMASK)
-      |> ignore
-
       Native.posix_spawnattr_setpgroup (attr, 0) |> ignore
       Native.sigemptyset signals |> ignore
       Native.posix_spawnattr_setsigmask (attr, signals) |> ignore
@@ -337,6 +358,7 @@ module Posix =
 
       Native.posix_spawnattr_setsigdefault (attr, signals) |> ignore
       Native.posix_spawn_file_actions_init actions |> ignore
+      closeOthers attr actions (POSIX_SPAWN_SETPGROUP ||| POSIX_SPAWN_SETSIGDEF ||| POSIX_SPAWN_SETSIGMASK)
 
       Native.posix_spawn_file_actions_addopen (actions, 0, "/dev/null", 0, 0)
       |> ignore

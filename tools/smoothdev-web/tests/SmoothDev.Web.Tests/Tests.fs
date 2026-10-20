@@ -423,6 +423,30 @@ garbage line
         Expect.isEmpty (State.read dir.path) "state cleared"
       }
 
+      test "a component does not inherit the fds of the command that started it" {
+        use dir = new TempDir()
+        ProcessManagement.Posix.resolver.Force()
+        // dup() leaves the copy inheritable, like a stdout the runtime duplicated
+        let fd = ProcessManagement.Posix.Native.dup 1
+        Expect.isGreaterThan fd 2 "a spare fd"
+
+        try
+          // the log starts with the command line: the answers are computed, so only the shell prints them
+          let argv =
+            [| "/bin/sh"; "-c"; $"if (: >&{fd}) 2>/dev/null; then echo open$((6*7)); else echo shut$((6*7)); fi; sleep 60" |]
+
+          let e = Runner.start dir.path "fds" argv [||] dir.path 0 "" |> ok
+
+          try
+            let said () = let t = File.ReadAllText e.log in t.Contains "open42" || t.Contains "shut42"
+            Expect.isTrue (waitUntil (TimeSpan.FromSeconds 5.) said) "log"
+            Expect.stringContains (File.ReadAllText e.log) "shut42" "fd closed in the child"
+          finally
+            (Runner.stop dir.path e (TimeSpan.FromSeconds 5.)).Wait()
+        finally
+          ProcessManagement.Posix.Native.close fd |> ignore
+      }
+
       test "a process ignoring SIGTERM is killed after the timeout" {
         use dir = new TempDir()
 
