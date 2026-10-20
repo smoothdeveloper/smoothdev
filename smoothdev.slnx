@@ -13,7 +13,9 @@
   </Folder>
   <Folder Name="/tools/" />
   <Folder Name="/ui/">
+    <Project Path="ui/gallery/gallery.fsproj" />
     <Project Path="ui/smoothdev.ui/smoothdev.ui.fsproj" />
+    <Project Path="ui/smoothdev.ui.fable.webcomponents/smoothdev.ui.fable.webcomponents.fsproj" />
   </Folder>
   <Folder Name="/ui/tests/">
     <Project Path="ui/tests/smoothdev.ui.tests/smoothdev.ui.tests.fsproj" />

@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Every control on one page, to try them and to look at them: `pnpm install && pnpm dev`. -->
+  <PropertyGroup>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="src/Gallery.fs" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\smoothdev.ui.fable.webcomponents\smoothdev.ui.fable.webcomponents.fsproj" />
+  </ItemGroup>
+  <Import Project="..\..\.paket\Paket.Restore.targets" />
+</Project>

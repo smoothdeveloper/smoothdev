@@ -2,12 +2,14 @@
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <IsPackable>false</IsPackable>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="Tests.fs" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\smoothdev.ui\smoothdev.ui.fsproj" />
+    <ProjectReference Include="..\..\smoothdev.ui.fable.webcomponents\smoothdev.ui.fable.webcomponents.fsproj" />
   </ItemGroup>
   <Import Project="..\..\..\.paket\Paket.Restore.targets" />
 </Project>

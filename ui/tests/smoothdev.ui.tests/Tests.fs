@@ -183,5 +183,39 @@ let editor =
     }
   ]
 
+/// The web layer's pure parts (the rest needs a browser: see ui/gallery).
+let css =
+  // the console's palette before it moved onto the tokens, without its own (site, vite, server, config)
+  let before = """
+:root {
+  --sd-bg: #0d1117; --sd-panel: #161b22; --sd-panel-2: #1c2128; --sd-line: #30363d; --sd-ink: #c9d1d9;
+  --sd-bright: #f0f6fc; --sd-muted: #8b949e; --sd-accent: #58a6ff; --sd-accent-2: #bc8cff;
+  --sd-ok: #3fb950; --sd-warn: #d29922; --sd-bad: #f85149; --sd-glow: rgba(88, 166, 255, .18);
+  --sd-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  --sd-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+  color-scheme: dark;
+}
+:root[data-theme="light"] {
+  --sd-bg: #f6f8fa; --sd-panel: #ffffff; --sd-panel-2: #f1f3f5; --sd-line: #d0d7de; --sd-ink: #1f2328;
+  --sd-bright: #0d1117; --sd-muted: #656d76; --sd-accent: #0969da; --sd-accent-2: #8250df;
+  --sd-ok: #1a7f37; --sd-warn: #9a6700; --sd-bad: #cf222e; --sd-glow: rgba(9, 105, 218, .12);
+  color-scheme: light;
+}"""
+  let blocks (text: string) =
+    text.Split('}', System.StringSplitOptions.RemoveEmptyEntries)
+    |> Array.map (fun b -> b.Substring(b.IndexOf '{' + 1).Split(';') |> Array.map (fun d -> d.Trim()) |> Array.filter (fun d -> d <> "") |> Set.ofArray)
+    |> Array.filter (fun s -> not s.IsEmpty)
+  testList "css" [
+    test "the tokens give the console's palette, dark and light" {
+      let after = blocks (smoothdev.ui.fable.webcomponents.Css.stylesheet "sd" Theme.dark Theme.light)
+      let before = blocks before
+      Expect.equal after.Length 2 "two blocks"
+      Expect.isEmpty (Set.difference before[0] after[0]) "dark: nothing lost"
+      // the light block of the console set no fonts: they came from :root
+      Expect.isEmpty (Set.difference before[1] after[1]) "light: nothing lost"
+      Expect.isEmpty (Set.difference after[1] before[1] |> Set.filter (fun d -> not (d.StartsWith "--sd-mono" || d.StartsWith "--sd-sans"))) "light: nothing added but the fonts"
+    }
+  ]
+
 [<EntryPoint>]
-let main argv = runTestsWithCLIArgs [] argv (testList "smoothdev.ui" [ theme; colours; scrubber; rows; sortable; tree; tabs; editor ])
+let main argv = runTestsWithCLIArgs [] argv (testList "smoothdev.ui" [ theme; colours; scrubber; rows; sortable; tree; tabs; editor; css ])

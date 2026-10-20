@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- The controls as Lit web components, written in F# with Firelight and compiled by Fable. -->
+  <PropertyGroup>
+    <PackageId>smoothdev.ui.fable.webcomponents</PackageId>
+    <Authors>Gauthier Segay</Authors>
+    <PackageLicenseExpression>AGPL-3.0-only</PackageLicenseExpression>
+    <Description>Lit web components (F#, Firelight, Fable) for the smoothdev.ui controls: sd-tabs, sd-scrubber, sd-colour-sets, sd-rows, sd-sortable, sd-tree, sd-editor, and the theme tokens as CSS custom properties.</Description>
+    <PackageTags>fable;fable-library;fable-javascript;lit;web-components;ui;controls</PackageTags>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Css.fs" />
+    <Compile Include="Events.fs" />
+    <Compile Include="Tabs.fs" />
+    <Compile Include="Scrubber.fs" />
+    <Compile Include="ColourSets.fs" />
+    <Compile Include="Rows.fs" />
+    <Compile Include="Sortable.fs" />
+    <Compile Include="Tree.fs" />
+    <Compile Include="Editor.fs" />
+    <Compile Include="Elements.fs" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\smoothdev.ui\smoothdev.ui.fsproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <Content Include="@(Compile)" Pack="true" PackagePath="fable/%(RelativeDir)%(Filename)%(Extension)" />
+    <Content Include="$(MSBuildProjectFullPath)" Pack="true" PackagePath="fable/" />
+  </ItemGroup>
+  <Import Project="..\..\.paket\Paket.Restore.targets" />
+</Project>

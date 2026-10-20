@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>smoothdev.ui gallery</title>
+  <script>
+    (function () {
+      var setting = "system";
+      try { setting = localStorage.getItem("nacara-theme") || "system"; } catch (e) {}
+      var q = new URLSearchParams(location.search).get("theme");
+      if (q) setting = q;
+      var dark = setting === "dark" || (setting === "system" && matchMedia("(prefers-color-scheme: dark)").matches);
+      document.documentElement.dataset.theme = dark ? "dark" : "light";
+    })();
+  </script>
+  <style>
+    html, body { margin: 0; }
+    body { background: var(--sd-bg); color: var(--sd-ink); font: 14px var(--sd-sans); }
+  </style>
+</head>
+<body>
+  <sd-gallery></sd-gallery>
+  <script type="module" src="./src/Gallery.fs"></script>
+</body>
+</html>
