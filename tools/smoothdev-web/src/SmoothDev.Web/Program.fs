@@ -33,7 +33,7 @@ Commands:
   config [show|diff|init]    print the resolved config, how the file differs from detection, or write it
   site [plan] [--json]       documentation sites (Nacara) under this folder, the Vite apps they host, and why
   site dev [--port N]        the site's dev server, each mounted Vite app under its base, one front port
-  site stop|status           stop / list what `site dev` and `site preview` started
+  site stop|status [--json]  stop / list what `site dev` and `site preview` started
   site dist                  the site's build, with each mounted app built into its route (.smoothdev/web/site-dist)
   site preview               serve the site dist as a static host would
 
@@ -234,6 +234,9 @@ let site (dir: string) (browser: bool) (sub: string list) =
     | [ "dev"; "stop" ] -> wait (SiteActions.stop ctx)
     | [ "dist" ] -> wait (SiteActions.dist ctx plan s)
     | [ "preview" ] -> wait (SiteActions.preview ctx plan s)
+    | [ "status"; "--json" ] ->
+      printfn "%s" (SiteActions.statusJson (State.live s.repo))
+      0
     | [ "status" ] ->
       let live = State.live s.repo |> Array.filter (fun e -> e.name.StartsWith "site-")
       if live.Length = 0 then printfn "nothing running"

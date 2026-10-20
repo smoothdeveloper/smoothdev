@@ -33,6 +33,20 @@ let configFor (site: Sites.Site) : Config =
 let siteNames (root: string) =
   State.live root |> Array.map _.name |> Array.filter (fun n -> n.StartsWith "site-")
 
+/// `site status --json`: what `site dev` and `site preview` run, the front first, as
+/// `[{ name, pid, port, url, log }]` (what a caller prints as links).
+let statusJson (entries: Entry array) =
+  let order (e: Entry) =
+    if e.name = frontName then 0
+    elif e.name = previewName then 1
+    elif e.name = siteName then 2
+    else 3
+  entries
+  |> Array.filter (fun e -> e.name.StartsWith "site-")
+  |> Array.sortBy (fun e -> order e, e.name)
+  |> Array.map (fun e -> {| name = e.name; pid = e.pid; port = e.port; url = e.url; log = e.log |})
+  |> System.Text.Json.JsonSerializer.Serialize
+
 /// The folder holding the app's lockfile (the app, or the workspace root above it, up to the repository).
 let lockDir (repo: string) (dir: string) =
   let rec up (d: string) =

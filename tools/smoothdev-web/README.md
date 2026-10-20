@@ -111,7 +111,7 @@ stopped fable (pid 61721)
 | `site [plan] [--json]` | the documentation sites (Nacara) under this folder, where each Vite app mounts and why, and the dev wiring |
 | `site dev [--port N]` | the site's watch, each mounted Vite app under its route, and one front port for all of them |
 | `site dist` / `site preview` | the site's build with each app built into its route, in `.smoothdev/web/site-dist`; served as a static host would |
-| `site stop\|status` | stop / list what `site dev` and `site preview` started (`--site <name>` picks one of several sites) |
+| `site stop\|status [--json]` | stop / list what `site dev` and `site preview` started (`--site <name>` picks one of several sites); `--json`: `[{ name, pid, port, url, log }]`, the front first |
 
 Global options: `--dir <app folder>` (default: the current folder; the nearest `smoothdev.web.json` at
 or above it wins), `--no-browser` (print URLs instead; also `SMOOTHDEV_WEB_NO_BROWSER=1`).

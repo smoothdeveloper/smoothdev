@@ -957,7 +957,31 @@ let front =
       }
     ]
 
-let tests = testList "smoothdev.web" [ ports; config; tracking; staticServer; guiPage; sites; selfDoc; console; front ]
+let siteStatus =
+  testList
+    "site status --json"
+    [
+      test "the site's processes, the front first, with their links" {
+        let entry name port url =
+          { name = name; pid = 4242; pgid = 4242; port = port; url = url; log = (if url = "" then "" else "/tmp/" + name + ".log")
+            command = [||]; startedAt = DateTimeOffset.UnixEpoch; owner = 1 }
+        let json =
+          SiteActions.statusJson
+            [| entry "site-vite-playground" 5174 "http://127.0.0.1:5174/demo/playground/"
+               entry "server" 5000 "http://127.0.0.1:5000/"
+               entry "site-front" 5400 "http://127.0.0.1:5400/demo/"
+               entry "site-nacara" 0 "" |]
+        use doc = System.Text.Json.JsonDocument.Parse json
+        let rows = doc.RootElement.EnumerateArray() |> Seq.toArray
+        let names = rows |> Array.map (fun r -> r.GetProperty("name").GetString())
+        Expect.equal names [| "site-front"; "site-nacara"; "site-vite-playground" |] "site entries only, the front first"
+        Expect.equal (rows[0].GetProperty("url").GetString()) "http://127.0.0.1:5400/demo/" "the link to open"
+        Expect.equal (rows[0].GetProperty("port").GetInt32()) 5400 "port"
+        Expect.equal (rows[0].GetProperty("log").GetString()) "/tmp/site-front.log" "its log"
+      }
+    ]
+
+let tests = testList "smoothdev.web" [ ports; config; tracking; staticServer; guiPage; sites; selfDoc; console; front; siteStatus ]
 
 [<EntryPoint>]
 let main argv = runTestsWithCLIArgs [] argv tests

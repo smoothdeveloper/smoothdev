@@ -61,7 +61,7 @@ When the site has a page at the app's route (say `content/playground/index.md`, 
 
 Apps no longer need dev middleware that serves the site's output: the front does it.
 
-Processes, logs and state live in the site's repository, in `.smoothdev/web` (add `.smoothdev/` to the repository's `.gitignore`). `site status` lists them and `site stop` ends them.
+Processes, logs and state live in the site's repository, in `.smoothdev/web` (add `.smoothdev/` to the repository's `.gitignore`). `site status` lists them (`site status --json` as `[{ name, pid, port, url, log }]`, the front first) and `site stop` ends them.
 
 ## Dist
 
