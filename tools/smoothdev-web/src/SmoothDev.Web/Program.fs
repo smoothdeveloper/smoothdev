@@ -19,7 +19,7 @@ Commands:
   prod start|stop            dotnet publish -c Release, then run it (Production) serving the client's dist
   preview start|stop         serve the client's dist as static files (what a static host serves)
   build                      compile once (dotnet build, Fable) to check the app builds
-  dist                       production bundle into the client's dist (Fable, then vite build)
+  dist                       production bundle into the client's dist (client.distCommand, or Fable then vite build)
   open [dev|dist|prod]       open the running version in a browser (dist starts the preview);
                              without a target: dev, else prod, else preview, else dist
   logs [name...] [-f] [-n N] print the last N lines (default 40) of component logs; -f follows them
@@ -30,7 +30,7 @@ Commands:
   tui                        terminal UI
   gui [--port N] [--detach]  web GUI served by the tool on 127.0.0.1; --detach runs it in the background
                              (tracked like the other components: `stop` or the GUI's own stop ends it)
-  config [show|init]         print the resolved config, or write smoothdev.web.json from detection
+  config [show|diff|init]   print the resolved config, how the file differs from detection, or write it
 
 Options:
   --dir <path>    the app folder (default: current folder; the nearest smoothdev.web.json above it wins)
@@ -153,11 +153,25 @@ let logs (cfg: Config) (names: string list) follow count =
 
   0
 
-let config (cfg: Config) sub =
+let config (fromDir: string) (cfg: Config) sub =
   match sub with
   | []
   | [ "show" ] ->
     printf "%s" (Config.toJson cfg)
+    0
+  | [ "diff" ] ->
+    let view = Config.explain fromDir cfg
+    for line in view.lines do
+      AnsiConsole.MarkupLine line
+    if view.rows.Length > 0 then
+      let table = Table().Border(TableBorder.Rounded).Expand()
+      for column in [| "key"; "detection"; "file" |] do
+        table.AddColumn(column) |> ignore
+      for cells in view.rows do
+        table.AddRow cells |> ignore
+      AnsiConsole.Write table
+    for line in view.footer do
+      AnsiConsole.MarkupLine line
     0
   | [ "init" ] ->
     let path = cfg.root </> Config.fileName
@@ -189,7 +203,7 @@ let rec logOptions (args: string list) names follow count =
   | name :: tail                    -> logOptions tail (name :: names) follow count
   | []                              -> List.rev names, follow, count
 
-let run (ctx: Actions.Context) (argv: string array) (command: string list) =
+let run (fromDir: string) (ctx: Actions.Context) (argv: string array) (command: string list) =
   let wait (t: Threading.Tasks.Task<Result<unit, string>>) = t.GetAwaiter().GetResult() |> exitCode
 
   match command with
@@ -225,7 +239,7 @@ let run (ctx: Actions.Context) (argv: string array) (command: string list) =
   | [ "gui"; "--detach" ]  -> wait (Gui.detach ctx None)
   | [ "gui"; "--detach"; "--port"; p ]
   | [ "gui"; "--port"; p; "--detach" ] -> wait (Gui.detach ctx (Some(int p)))
-  | "config" :: sub -> config ctx.config sub
+  | "config" :: sub -> config fromDir ctx.config sub
   | _ ->
     eprintf $"%s{usage}"
     2
@@ -305,4 +319,4 @@ let main argv =
             browser = browser
           }
 
-        run ctx argv command
+        run dir ctx argv command

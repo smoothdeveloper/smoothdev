@@ -8,6 +8,7 @@ open System.Text
 open System.Text.Encodings.Web
 open System.Text.Json
 open System.Text.RegularExpressions
+open Spectre.Console
 
 let fileName = "smoothdev.web.json"
 
@@ -253,6 +254,7 @@ let detect root =
         fable = detectFable dir
         port = Defaults.vitePort
         dist = detectDist dir
+        distCommand = None
         basePath = None
       })
 
@@ -347,6 +349,28 @@ let flag name e =
 let resolve dir path =
   Path.GetFullPath(dir </> path)
 
+/// `client.distCommand`: a string split on spaces, or an array of strings. No shell.
+let distCommandOf (c: JsonElement) =
+  match prop "distCommand" c with
+  | None -> None
+  | Some v when v.ValueKind = JsonValueKind.String ->
+    let parts =
+      text v
+      |> fun s -> s.Split([| ' '; '\t' |], StringSplitOptions.RemoveEmptyEntries)
+    if parts.Length = 0 then failwith "client.distCommand must not be empty"
+    Some parts
+  | Some v when v.ValueKind = JsonValueKind.Array ->
+    let parts =
+      v.EnumerateArray()
+      |> Seq.map (fun item ->
+        if item.ValueKind <> JsonValueKind.String then
+          failwith "client.distCommand entries must be strings"
+        text item)
+      |> Seq.toArray
+    if parts.Length = 0 then failwith "client.distCommand must not be empty"
+    Some parts
+  | _ -> failwith "client.distCommand must be a string or an array of strings"
+
 let fableNamed clientDir name =
   match name with
   | "plugin" -> Plugin
@@ -374,7 +398,7 @@ let fableObject clientDir (v: JsonElement) =
 
 let parseClient root (c: JsonElement) =
   expectObject "client" c
-  checkKeys "client" [ "dir"; "fable"; "port"; "dist"; "base" ] c
+  checkKeys "client" [ "dir"; "fable"; "port"; "dist"; "distCommand"; "base" ] c
   let dir = str "dir" c |> Option.defaultValue "." |> resolve root
 
   if not (Directory.Exists dir) then
@@ -390,8 +414,9 @@ let parseClient root (c: JsonElement) =
     dir      = dir
     fable    = fable
     port     = port "port" c |> Option.defaultValue Defaults.vitePort
-    dist     = str "dist" c |> Option.defaultValue "dist" |> resolve dir
-    basePath = str "base" c
+    dist        = str "dist" c |> Option.defaultValue "dist" |> resolve dir
+    distCommand = distCommandOf c
+    basePath    = str "base" c
   }
 
 let parseServer root hasClient (s: JsonElement) =
@@ -517,6 +542,98 @@ let rec widen (cfg: Config) =
     | Ok up when covers cfg up -> widen up
     | _ -> cfg
 
+type Explain =
+  { lines  : string array
+    rows   : string array array
+    footer : string array }
+
+/// Spectre markup for `config diff`: keys bold, tools green, paths blue.
+/// The first line is the config file (or the detected folder) relative to `from`.
+let explain (from: string) (cfg: Config) : Explain =
+  let rel target =
+    Path.GetRelativePath(Path.GetFullPath from, Path.GetFullPath target).Replace('\\', '/')
+  let e s = Markup.Escape s
+  let key s = $"[bold]{e s}[/]"
+  let tool s = $"[green]{e s}[/]"
+  let path s = $"[blue]{e s}[/]"
+  let dim s = $"[grey]{e s}[/]"
+
+  let argvText (argv: string array) =
+    argv
+    |> Array.map (fun arg ->
+      if arg.Contains '/' || arg.Contains '\\' || arg.Contains '.' then path arg else tool arg)
+    |> String.concat " "
+
+  let fableText = function
+    | Plugin -> $"""{tool "vite-plugin-fable"} compiles inside {tool "Vite"}"""
+    | NoFable -> $"""no {tool "Fable"}"""
+    | Cli(project, outDir, _) ->
+      $"""{tool "dotnet"} {tool "fable"} {path (nameOf project)} into {path outDir}"""
+
+  let distText = function
+    | None -> $"""{tool "Fable"} then {tool "vite"} {tool "build"}"""
+    | Some argv -> argvText argv
+
+  let none = dim "none"
+  let row name left right = [| key name; left; right |]
+  let clientSummary (c: Client) =
+    $"""{path (rel c.dir)}; {fableText c.fable}; {distText c.distCommand}; bundle {path (rel c.dist)}"""
+
+  let view lines rows footer =
+    { lines = List.toArray lines; rows = List.toArray rows; footer = List.toArray footer }
+
+  match cfg.file with
+  | None ->
+    view
+      [ path (rel cfg.root); $"""{dim "no"} {path fileName}: {dim "this is detection"}""" ]
+      []
+      []
+  | Some file ->
+    match detect cfg.root with
+    | Error msg ->
+      view [ path (rel file); $"""{key "detection"}: {e msg}""" ] [] []
+    | Ok detected ->
+      let rows = ResizeArray()
+      let footer = ResizeArray()
+      match detected.client, cfg.client with
+      | None, None -> ()
+      | None, Some c -> rows.Add (row "client" none (clientSummary c))
+      | Some d, None -> rows.Add (row "client" (clientSummary d) none)
+      | Some d, Some c ->
+        if fableText d.fable <> fableText c.fable then
+          rows.Add (row "fable" (fableText d.fable) (fableText c.fable))
+        if d.distCommand <> c.distCommand then
+          rows.Add (row "dist" (distText d.distCommand) (distText c.distCommand))
+        if d.dir <> c.dir then
+          rows.Add (row "client.dir" (path (rel d.dir)) (path (rel c.dir)))
+        if d.port <> c.port then
+          rows.Add (row "client.port" (string d.port) (string c.port))
+        if d.dist <> c.dist then
+          rows.Add (row "client.dist" (path (rel d.dist)) (path (rel c.dist)))
+        if d.basePath <> c.basePath then
+          let b = function Some (v: string) -> e v | None -> dim "the vite config's"
+          rows.Add (row "client.base" (b d.basePath) (b c.basePath))
+      match detected.server, cfg.server with
+      | None, None -> ()
+      | None, Some s -> rows.Add (row "server" none (path (rel s.project)))
+      | Some d, None -> rows.Add (row "server" (path (rel d.project)) none)
+      | Some d, Some s ->
+        if d.project <> s.project then
+          rows.Add (row "server.project" (path (rel d.project)) (path (rel s.project)))
+        if d.serveDist <> s.serveDist then
+          let bit (b: bool) = if b then "true" else "false"
+          rows.Add (row "serveDist" (bit d.serveDist) (bit s.serveDist))
+          footer.Add (dim "prod serves the client dist only when serveDist is true")
+        if d.port <> s.port then
+          rows.Add (row "server.port" (string d.port) (string s.port))
+      let lines =
+        [
+          path (rel file)
+          $"""{dim "replaces detection of"} {path (rel cfg.root)}"""
+          if rows.Count = 0 then dim "the file matches what detection would do"
+        ]
+      view lines (List.ofSeq rows) (List.ofSeq footer)
+
 /// The config of the app containing dir: the nearest smoothdev.web.json at or above it, else detection.
 let load dir =
   let dir = Path.GetFullPath dir
@@ -570,6 +687,10 @@ let toJson (cfg: Config) =
 
     w.WriteNumber("port", c.port)
     w.WriteString("dist", rel c.dir c.dist)
+    c.distCommand |> Option.iter (fun argv ->
+      w.WriteStartArray "distCommand"
+      for arg in argv do w.WriteStringValue arg
+      w.WriteEndArray())
     c.basePath |> Option.iter (fun b -> w.WriteString("base", b))
     w.WriteEndObject()
   | None -> ()

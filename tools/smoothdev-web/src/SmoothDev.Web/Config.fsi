@@ -20,6 +20,14 @@ val parse: root: string -> file: string option -> json: string -> Result<Config,
 val load: dir: string -> Result<Config, string>
 val urlBase: basePath: string option -> string
 val toJson: cfg: Config -> string
+/// `config diff`: a path line, then rows of key / detection / file (markup).
+type Explain =
+  { lines  : string array
+    rows   : string array array
+    footer : string array }
+
+/// The first line is a path relative to `from`. `rows` is empty when the file matches detection.
+val explain: from: string -> cfg: Config -> Explain
 
 type ScanRow =
   { path : string

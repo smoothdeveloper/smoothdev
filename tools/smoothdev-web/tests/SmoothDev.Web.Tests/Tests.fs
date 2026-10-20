@@ -114,12 +114,46 @@ let config =
         Expect.equal client.fable (Cli(Path.Combine(client.dir, "App.fsproj"), "out", Some ".jsx")) "client.fable"
         Expect.equal client.port 3000 "client.port"
         Expect.equal client.dist (Path.Combine(dir.path, "dist")) "client.dist"
+        Expect.equal client.distCommand None "no dist command"
         Expect.equal client.basePath (Some "/app/") "client.base"
         Expect.equal (Config.urlBase client.basePath) "/app/" "url base"
         let s = Option.get cfg.server
         Expect.equal s.project server "server.project"
         Expect.equal (s.port, s.prodPort, s.serveDist) (5050, 9090, true) "server ports, serveDist defaults on"
         Expect.equal (cfg.previewPort, cfg.guiPort) (4000, Config.Defaults.guiPort) "ports"
+      }
+
+      test "distCommand is an argv, from a string or an array" {
+        use dir = new TempDir()
+        let fromString = Config.parse dir.path None """{ "client": { "fable": "none", "distCommand": "dotnet fsi build.fsx" } }""" |> ok
+        Expect.equal (Option.get fromString.client).distCommand (Some [| "dotnet"; "fsi"; "build.fsx" |]) "string splits on spaces"
+        let fromArray = Config.parse dir.path None """{ "client": { "fable": "none", "distCommand": ["dotnet", "fsi", "build.fsx"] } }""" |> ok
+        Expect.equal (Option.get fromArray.client).distCommand (Some [| "dotnet"; "fsi"; "build.fsx" |]) "array is the argv"
+        Expect.stringContains (Config.parse dir.path None """{ "client": { "distCommand": 1 } }""" |> error) "distCommand" "rejects a number"
+      }
+
+      test "config diff says what the file changes" {
+        use dir = new TempDir()
+        dir.write "web/vite.config.mjs" "export default {}" |> ignore
+        dir.write "web/package.json" """{ "devDependencies": { "vite": "1.0.0" } }""" |> ignore
+        dir.write "server/App.fsproj" "<Project Sdk=\"Microsoft.NET.Sdk.Web\" />" |> ignore
+        let json = """{ "client": { "dir": "web", "fable": { "project": "../ui/App.fsproj", "outDir": "js" }, "distCommand": "dotnet fsi build.fsx" }, "server": { "project": "server/App.fsproj", "serveDist": false } }"""
+        Directory.CreateDirectory(Path.Combine(dir.path, "ui")) |> ignore
+        dir.write "ui/App.fsproj" "<Project />" |> ignore
+        let cfg = Config.parse dir.path (Some (Path.Combine(dir.path, "smoothdev.web.json"))) json |> ok
+        let view = Config.explain dir.path cfg
+        Expect.equal view.lines[0] "[blue]smoothdev.web.json[/]" "first line is the config relative to --dir"
+        let text = view.rows |> Array.concat |> String.concat "\n"
+        Expect.stringContains text "Fable" "detection has no fable project in web/"
+        Expect.stringContains text "App.fsproj" "the file sets the cli watch"
+        Expect.stringContains text "build.fsx" "the file sets the dist command"
+        Expect.stringContains text "[bold]serveDist[/]" "serveDist key"
+        Expect.stringContains text "true" "detection serveDist"
+        Expect.stringContains text "false" "file serveDist"
+        let moved = Config.parse dir.path (Some (Path.Combine(dir.path, "smoothdev.web.json"))) """{ "client": { "dir": "web", "dist": "out", "base": "/shop/" } }""" |> ok
+        let movedText = (Config.explain dir.path moved).rows |> Array.concat |> String.concat "\n"
+        Expect.stringContains movedText "[bold]client.dist[/]" "dist folder row"
+        Expect.stringContains movedText "/shop/" "base row"
       }
 
       test "a static app needs no server" {

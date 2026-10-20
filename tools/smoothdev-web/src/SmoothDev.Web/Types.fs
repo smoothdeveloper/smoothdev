@@ -23,8 +23,9 @@ type Client =
   { dir      : string          // absolute
     fable    : Fable
     port     : int             // preferred Vite dev port
-    dist     : string          // absolute output folder of the production bundle
-    basePath : string option } // Vite `base` for the bundle; None keeps the vite config's own
+    dist        : string          // absolute output folder of the production bundle
+    distCommand : string array option // when set, `dist` runs this argv in the client dir instead of Fable then vite build
+    basePath    : string option } // Vite `base` for the bundle; None keeps the vite config's own
 
 /// The .NET web server (ASP.NET Core, Giraffe, Saturn...): dotnet watch in dev, published for prod.
 type Server =

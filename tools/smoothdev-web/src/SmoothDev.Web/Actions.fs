@@ -597,7 +597,8 @@ let guarded ctx (work: unit -> Task<unit>) =
       return Error msg
   }
 
-/// Production bundle: Fable (when compiled outside Vite), then `vite build` into the client's dist.
+/// Production bundle. `client.distCommand`, when set, is the whole build (run in the client dir).
+/// Otherwise: Fable (when compiled outside Vite), then `vite build` into the client's dist.
 let dist ctx =
   guarded ctx (fun () ->
     task {
@@ -610,33 +611,41 @@ let dist ctx =
         let! deps = ensureDeps ctx c
         orFail deps
 
-        match c.fable with
-        | Cli(project, outDir, extension) ->
-          let! tools = restoreTools ctx c.dir
-          orFail tools
-          let! compiled = once ctx "dist" (fableArgv false project outDir extension) [||] c.dir
-          orFail compiled
-        | Plugin
-        | NoFable -> ()
+        match c.distCommand with
+        | Some argv ->
+          let! bundled = once ctx "dist" argv [||] c.dir
+          orFail bundled
+        | None ->
+          match c.fable with
+          | Cli(project, outDir, extension) ->
+            let! tools = restoreTools ctx c.dir
+            orFail tools
+            let! compiled = once ctx "dist" (fableArgv false project outDir extension) [||] c.dir
+            orFail compiled
+          | Plugin
+          | NoFable -> ()
 
-        let argv =
-          viteArgv
-            cfg.packageManager
-            c
-            [|
-              "build"
-              "--outDir"
-              c.dist
-              "--emptyOutDir"
-              match c.basePath with
-              | Some b ->
-                "--base"
-                b
-              | None -> ()
-            |]
+          let argv =
+            viteArgv
+              cfg.packageManager
+              c
+              [|
+                "build"
+                "--outDir"
+                c.dist
+                "--emptyOutDir"
+                match c.basePath with
+                | Some b ->
+                  "--base"
+                  b
+                | None -> ()
+              |]
 
-        let! bundled = once ctx "dist" argv [||] c.dir
-        orFail bundled
+          let! bundled = once ctx "dist" argv [||] c.dir
+          orFail bundled
+
+        if not (Directory.Exists c.dist) then
+          raise (Step $"dist did not produce {c.dist}")
         let files = Directory.GetFiles(c.dist, "*", SearchOption.AllDirectories)
         let kib = (files |> Array.sumBy (fun f -> FileInfo(f).Length)) / 1024L
         ctx.say Success $"dist ready: {c.dist} ({files.Length} files, {kib} KiB)"

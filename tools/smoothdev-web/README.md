@@ -8,7 +8,7 @@ with no process left behind. From the command line, a terminal UI, or a small we
 ```
 smoothdev-web dev start      # dotnet watch + Fable + Vite, ports picked free
 smoothdev-web status         # what runs, PID, port, URL
-smoothdev-web dist           # production bundle into dist/
+smoothdev-web dist           # production bundle into dist/ (or client.distCommand)
 smoothdev-web open dist      # serve dist/ like a static host would, open it
 smoothdev-web stop           # stop all of it, process groups included
 ```
@@ -51,7 +51,8 @@ Or run it from source without installing: `dotnet run --project src/SmoothDev.We
 In the folder of a Vite app (or above it: see *detection* below):
 
 ```sh
-smoothdev-web config show    # what it detected: client dir, Fable mode, server project, package manager
+smoothdev-web config show    # the resolved config
+smoothdev-web config diff    # what the file changes versus detection of the same folder
 smoothdev-web config init    # write it to smoothdev.web.json, then adjust
 smoothdev-web dev start
 smoothdev-web open dev
@@ -173,6 +174,8 @@ are rejected (typos do not pass silently).
                                          // "none": plain Vite
     "port": 5173,                        // preferred Vite port
     "dist": "dist",                      // bundle folder, relative to client.dir
+    "distCommand": ["dotnet", "fsi", "build.fsx"], // optional: `dist` runs this in client.dir
+                                         // instead of Fable then vite build. A string is split on spaces.
     "base": "/shop/"                     // Vite base for the bundle; omitted: the vite config's own
   },
   "server": {
