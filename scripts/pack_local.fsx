@@ -38,4 +38,4 @@ try
     printfn "%s" (Path.Combine(feed, $"{p}.{version}.nupkg"))
 finally
   Directory.Delete(work, true)
-printfn "packed %s (sutradhara %s)" version sha
+printfn "packed %s (smoothdev %s)" version sha
