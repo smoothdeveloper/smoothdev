@@ -180,10 +180,8 @@ let processTable () =
 let private clip (command: string) =
   if command.Length <= 200 then command else command.Substring(0, 200) + "…"
 
-/// The processes above pid, its parent first, up to the first process (or 16 levels).
-let ancestry (pid: int) =
-  let table = processTable () |> Array.map (fun (p, pp, n, c) -> p, (pp, n, c)) |> Map.ofArray
-
+/// The processes above pid in a process table, its parent first, up to the first process (or 16 levels).
+let ancestryIn (table: Map<int, int * string * string>) (pid: int) =
   let rec up (p: int) depth acc =
     match table.TryFind p with
     | Some(ppid, _, _) when ppid > 0 && depth < 16 ->
@@ -194,10 +192,48 @@ let ancestry (pid: int) =
 
   up pid 0 [] |> Array.ofList
 
+let tableOf (rows: (int * int * string * string) array) =
+  rows |> Array.map (fun (p, pp, n, c) -> p, (pp, n, c)) |> Map.ofArray
+
+/// The processes above pid, its parent first, up to the first process (or 16 levels).
+let ancestry (pid: int) = ancestryIn (tableOf (processTable ())) pid
+
+/// A chain that ends at the first process at once: the parent exited before it was read (a command
+/// started with `(cmd &)`, or a supervisor that detached).
+let orphaned (chain: Ancestor array) = chain.Length = 0 || (chain.Length = 1 && chain[0].pid = 1)
+
+/// Who started pid, even when its parent has exited: its own ancestry, else (orphaned) the leader of
+/// its process group when that is another live process (the shell a `(cmd &)` ran in), and above it.
+let starterOf (table: Map<int, int * string * string>) (pid: int) (pgid: int) =
+  let own = ancestryIn table pid
+  if orphaned own && pgid > 1 && pgid <> pid then
+    match table.TryFind pgid with
+    | Some(_, name, command) -> Array.append [| { pid = pgid; name = name; command = clip command } |] (ancestryIn table pgid)
+    | None -> own
+  else
+    own
+
+/// SMOOTHDEV_WEB_ANCESTRY: the chain a smoothdev-web process recorded when it started, handed to the
+/// processes it starts, so a detached one still knows who started the launch.
+let ancestryVariable = "SMOOTHDEV_WEB_ANCESTRY"
+
+let encodeAncestry (chain: Ancestor array) = JsonSerializer.Serialize chain
+
+let decodeAncestry (text: string) : Ancestor array =
+  try
+    match JsonSerializer.Deserialize<Ancestor array> text with
+    | null -> [||]
+    | a -> a
+  with _ ->
+    [||]
+
+/// The chain to record: its own, unless it is orphaned and an inherited one says more.
+let chooseAncestry (own: Ancestor array) (inherited: Ancestor array) =
+  if orphaned own && inherited.Length > 0 then inherited else own
+
 /// A launch for this process, not yet in the registry.
-let create (dir: string) (command: string array) =
+let create (dir: string) (command: string array) (ancestors: Ancestor array) =
   let pid = Environment.ProcessId
-  let ancestors = ancestry pid
   { id        = $"{DateTime.Now:``yyyyMMdd-HHmmss``}-{pid}"
     pid       = pid
     ppid      = (if ancestors.Length > 0 then ancestors[0].pid else 0)
@@ -274,20 +310,22 @@ let holderOf home (port: int) =
 
 /// Who started it: the launcher name, then the parent processes up to the first one that is not a shell
 /// or a dotnet host (an editor, a terminal, an agent), at most four.
-let by (l: Launch) =
-  let shells = set [ "zsh"; "-zsh"; "bash"; "-bash"; "sh"; "fish"; "dotnet"; "login" ]
+let byOf (launcher: string) (ancestors: Ancestor array) =
+  let shells = set [ "zsh"; "-zsh"; "bash"; "-bash"; "sh"; "fish"; "dotnet"; "login"; "node"; "env"; "npm"; "pnpm"; "yarn"; "npx"; "smoothdev-web" ]
   let chain =
-    l.ancestors
+    ancestors
     |> Array.truncate 6
     |> Array.map (fun a -> $"{a.name} ({a.pid})")
   let named =
-    l.ancestors |> Array.tryFind (fun a -> not (shells.Contains a.name)) |> Option.map _.name
+    ancestors |> Array.tryFind (fun a -> not (shells.Contains a.name)) |> Option.map _.name
   let lead =
-    match l.launcher, named with
+    match launcher, named with
     | "", Some n -> n
     | "", None -> "?"
     | launcher, _ -> launcher
   lead, String.concat " <- " chain
+
+let by (l: Launch) = byOf l.launcher l.ancestors
 
 /// This process's launch: created on its first claim or child, so commands that start nothing
 /// (status, logs, launches) leave no entry.
@@ -295,7 +333,29 @@ module Current =
   let mutable private dir = Environment.CurrentDirectory
   let mutable private command: string array = [||]
   let mutable private me: Launch option = None
+  let mutable private startChain: Ancestor array option = None
   let private gate = obj ()
+
+  /// Reads who started this process now, before its parent can exit or it detaches, and hands the
+  /// chain (this process first) to what it starts in SMOOTHDEV_WEB_ANCESTRY. Program calls it first.
+  let capture () =
+    try
+      let pid = Environment.ProcessId
+      let table = tableOf (processTable ())
+      let own = starterOf table pid (ProcessManagement.processGroup pid)
+      let inherited =
+        match Environment.GetEnvironmentVariable ancestryVariable with
+        | null | "" -> [||]
+        | text -> decodeAncestry text
+      let chain = chooseAncestry own inherited
+      startChain <- Some chain
+      let self =
+        match table.TryFind pid with
+        | Some(_, name, command) -> [| { pid = pid; name = name; command = clip command } |]
+        | None -> [||]
+      Environment.SetEnvironmentVariable(ancestryVariable, encodeAncestry (Array.append self chain))
+    with _ ->
+      ()
 
   /// What the launch records as its folder and command (Program sets it from the arguments).
   let describe (folder: string) (argv: string array) =
@@ -307,7 +367,8 @@ module Current =
       match me with
       | Some l -> l
       | None ->
-        let l = create dir command
+        let chain = match startChain with Some c -> c | None -> ancestry Environment.ProcessId
+        let l = create dir command chain
         me <- Some l
         l)
 

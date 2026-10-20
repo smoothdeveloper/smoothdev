@@ -231,6 +231,27 @@ let consoleJson (s: State) =
     w.WriteEndArray()
     w.WriteEndObject()
   w.WriteEndArray()
+  w.WriteStartArray "others"
+  for i in (try Others.Cache.get () with _ -> [||]) do
+    w.WriteStartObject()
+    w.WriteNumber("pid", i.pid)
+    w.WriteString("project", i.project)
+    w.WriteString("dir", (if i.cwd.StartsWith userHome then "~" + i.cwd.Substring userHome.Length else i.cwd))
+    w.WriteString("kind", i.kind)
+    w.WriteString("command", i.command)
+    w.WriteString("title", i.title)
+    w.WriteString("uptime", i.uptime)
+    w.WriteString("by", i.by)
+    w.WriteString("chain", i.chain)
+    w.WriteStartArray "ports"
+    for p, u in Array.zip i.ports i.urls do
+      w.WriteStartObject()
+      w.WriteNumber("port", p)
+      w.WriteString("url", u)
+      w.WriteEndObject()
+    w.WriteEndArray()
+    w.WriteEndObject()
+  w.WriteEndArray()
   w.WriteStartArray "messages"
   for m in s.Messages do
     w.WriteStartObject()
@@ -318,6 +339,21 @@ let handle (s: State) (dir: string) (ctx: HttpListenerContext) =
         if doc.RootElement.TryGetProperty(k, &v) then v.GetString() |> Option.ofObj |> Option.defaultValue "" else ""
       let accepted = perform s (get "action") (get "site")
       json ctx.Response (JsonSerializer.Serialize {| accepted = accepted |})
+    | "POST", "/api/others/stop" ->
+      use reader = new StreamReader(request.InputStream)
+      use doc = JsonDocument.Parse(reader.ReadToEnd())
+      let mutable v = Unchecked.defaultof<JsonElement>
+      let pid = if doc.RootElement.TryGetProperty("pid", &v) && v.ValueKind = JsonValueKind.Number then v.GetInt32() else 0
+      let stopped =
+        match Others.stop pid with
+        | Ok i ->
+          s.Say Success $"sent SIGTERM to {i.kind} {i.project} (pid {pid})"
+          true
+        | Error e ->
+          s.Say Fail e
+          false
+      Others.Cache.invalidate ()
+      json ctx.Response (JsonSerializer.Serialize {| stopped = stopped |})
     | "GET", _ ->
       match StaticServer.resolve dir "/" path with
       | Some file -> write ctx.Response 200 (StaticServer.contentType file) (File.ReadAllBytes file)

@@ -1023,7 +1023,7 @@ let siteStatus =
 
 let launches =
   let launchIn (home: string) (pid: int) suffix =
-    { Launches.create home [| "site"; "dev" |] with id = $"test-{suffix}"; pid = pid }
+    { Launches.create home [| "site"; "dev" |] [||] with id = $"test-{suffix}"; pid = pid }
   testList
     "launches"
     [
@@ -1074,7 +1074,7 @@ let launches =
 
       test "the parent processes of a launch" {
         if not (OperatingSystem.IsWindows()) then
-          let l = Launches.create "/tmp" [| "status" |]
+          let l = Launches.create "/tmp" [| "status" |] (Launches.ancestry Environment.ProcessId)
           let parent = l.ancestors
           Expect.isNonEmpty parent "ancestors"
           let ppid =
@@ -1089,7 +1089,106 @@ let launches =
       }
     ]
 
-let tests = testList "smoothdev.web" [ launches; ports; config; tracking; staticServer; guiPage; sites; selfDoc; console; front; siteStatus ]
+let others =
+  let launch pid (children: int list) ports : Launches.Launch =
+    { Launches.create "/tmp" [| "site"; "dev" |] [||] with
+        id = $"test-{pid}"
+        pid = pid
+        children = [| for c in children -> { name = $"c{c}"; pid = c; root = "/tmp"; port = 0; url = ""; log = "" } |]
+        ports = [| for p in ports -> { port = p; role = "site"; url = ""; pid = 0 } |] }
+  testList
+    "others"
+    [
+      test "listeners are classified by their command line" {
+        let cases =
+          [ "node", "node /Users/me/app/node_modules/.bin/vite --port 5173", "vite"
+            "node", "node /Users/me/app/node_modules/vite/bin/vite.js --base /docs/", "vite"
+            "node", "node ./node_modules/webpack-dev-server/bin/webpack-dev-server.js", "webpack"
+            "node", "node /Users/me/shop/node_modules/next/dist/bin/next dev", "next"
+            "next-server", "next-server (v15.1.0)", "next"
+            "dotnet", "/usr/local/share/dotnet/dotnet watch --non-interactive run", "dotnet watch"
+            "dotnet", "dotnet /usr/local/share/dotnet/sdk/10.0.100/DotnetTools/dotnet-watch/dotnet-watch.dll run", "dotnet watch"
+            "dotnet", "dotnet fable watch src -o out", "fable watch"
+            "node", "node /opt/homebrew/bin/pnpm dev", "npm script"
+            "npm", "npm run dev", "npm script"
+            "Python", "/opt/homebrew/Cellar/python@3.13/Python.app/Contents/MacOS/Python -m http.server 8000", "python http.server"
+            "node", "node /usr/local/bin/live-server --port=8081", "live-server"
+            "python3.12", "/usr/bin/python3.12 -m jupyter lab --no-browser", "jupyter"
+            "agy", "/Applications/Gemini.app/Contents/Helpers/agy --hub --hub-port=61484", "antigravity"
+            "Docs", "/Users/me/site/docs/bin/Debug/net10.0/Docs watch --port 8080", "dotnet"
+            "api", "/Users/me/api/bin/Debug/net10.0/api --urls http://localhost:5000", "asp.net"
+            "node", "node server.js", "node"
+            "python3", "python3 app.py", "python"
+            "rapportd", "/usr/libexec/rapportd", "other" ]
+        for name, command, kind in cases do
+          Expect.equal (Others.classify name command false) kind command
+        Expect.equal (Others.classify "Docs" "/Users/me/site/docs/bin/Debug/net10.0/Docs watch --port 8080" true) "nacara" "a Nacara project"
+      }
+
+      test "system and application listeners are hidden by default, dev servers shown" {
+        let home = "/Users/me"
+        Expect.isTrue (Others.isDev "vite" "node vite" "/" home) "a recognized dev server, wherever it runs"
+        Expect.isTrue (Others.isDev "node" "node server.js" "/Users/me/src/app" home) "a runtime in a folder of the user's"
+        Expect.isFalse (Others.isDev "other" "/System/Library/CoreServices/ControlCenter.app/Contents/MacOS/ControlCenter" "/" home) "the system"
+        Expect.isFalse (Others.isDev "node" "/Applications/Visual Studio Code.app/Contents/Frameworks/Code Helper (Plugin).app/x" "/Users/me" home) "an editor's helper"
+        Expect.isFalse (Others.isDev "other" "adb -L tcp:5037 fork-server" "/Users/me/Library/Android/sdk/platform-tools" home) "under ~/Library"
+        Expect.isFalse (Others.isDev "other" "rapportd" "/" home) "a daemon at /"
+      }
+
+      test "a registered launch's processes and ports are not other instances" {
+        // 10 launch (smoothdev-web) <- 20 dotnet run (a child it started) <- 21 the site's apphost
+        // 30 a Vite in group 20 reparented to launchd; 40 a stranger; 50 a stranger on a claimed port
+        let table =
+          Map.ofList
+            [ 10, (1, "smoothdev-web", "smoothdev-web site dev")
+              20, (1, "dotnet", "dotnet run --project Docs.fsproj")
+              21, (20, "Docs", "Docs watch")
+              30, (1, "node", "node vite")
+              40, (5, "node", "node vite")
+              5, (1, "zsh", "zsh") ]
+        let pgid = function 30 -> 20 | p -> p
+        let live = [| launch 10 [ 20 ] [ 8080 ] |]
+        let roots = Others.ownedRoots live
+        let claimed = set (Launches.claimedPorts live)
+        let isExcluded pid ports = Others.excluded roots claimed table pgid pid ports
+        Expect.isTrue (isExcluded 20 [| 5000 |]) "a process the launch started"
+        Expect.isTrue (isExcluded 21 [| 8081 |]) "a descendant of one"
+        Expect.isTrue (isExcluded 30 [| 5173 |]) "in a launch's process group"
+        Expect.isTrue (isExcluded 50 [| 8080 |]) "on a port a launch claims"
+        Expect.isFalse (isExcluded 40 [| 5174 |]) "a stranger"
+      }
+
+      test "lsof and ss output are read, and URLs carry a detected base" {
+        let lsof = "p6732\ncnode\nf17\nn127.0.0.1:5180\np695\ncControlCenter\nf8\nn*:7000\nf9\nn*:7000\np900\ncnode\nf3\nn[::1]:3000\n"
+        let ls = Others.parseLsof lsof
+        Expect.equal (ls |> Array.map (fun l -> l.pid, l.port)) [| 6732, 5180; 695, 7000; 900, 3000 |] "one per pid and port"
+        Expect.equal (Others.urlOf ls[2].address 3000 "/") "http://localhost:3000/" "IPv6 loopback"
+        let ss = "LISTEN 0 511 127.0.0.1:5173 0.0.0.0:* users:((\"node\",pid=1234,fd=20))\n"
+        Expect.equal (Others.parseSs ss |> Array.map (fun l -> l.name, l.pid, l.port)) [| "node", 1234, 5173 |] "ss"
+        Expect.equal (Others.baseOf "node vite --base /docs/lab --port 5180") "/docs/lab/" "--base"
+        Expect.equal (Others.baseOf "node vite --base=/x/") "/x/" "--base="
+        Expect.equal (Others.parseElapsed "2-03:04:05") (Some(TimeSpan(2, 3, 4, 5))) "days"
+        Expect.equal (Others.parseElapsed "04:05") (Some(TimeSpan(0, 0, 4, 5))) "minutes"
+      }
+
+      test "who started a launch survives its parent exiting" {
+        let table =
+          Map.ofList
+            [ 100, (1, "smoothdev-web", "smoothdev-web site dev") // its subshell exited
+              90, (80, "zsh", "zsh -c ...")
+              80, (1, "Code", "Code") ]
+        let chain = Launches.starterOf table 100 90
+        Expect.equal (chain |> Array.map _.pid) [| 90; 80 |] "the process group's leader and above"
+        Expect.equal (fst (Launches.byOf "" chain)) "Code" "named by the first non-shell"
+        let inherited: Launches.Ancestor array = [| { pid = 7; name = "launcher"; command = "launcher" } |]
+        let orphan: Launches.Ancestor array = [| { pid = 1; name = "launchd"; command = "launchd" } |]
+        Expect.equal (Launches.chooseAncestry orphan inherited) inherited "an orphan takes the chain it inherited"
+        Expect.equal (Launches.chooseAncestry chain inherited) chain "its own when it has one"
+        Expect.equal (Launches.decodeAncestry (Launches.encodeAncestry inherited)) inherited "round trip"
+      }
+    ]
+
+let tests = testList "smoothdev.web" [ launches; others; ports; config; tracking; staticServer; guiPage; sites; selfDoc; console; front; siteStatus ]
 
 [<EntryPoint>]
 let main argv =

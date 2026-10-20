@@ -39,6 +39,10 @@ Commands:
   launches [--json] [--all]  every smoothdev-web launch on this machine: who started it (launcher, parent
                              processes), where, its ports and URLs; --all adds the ended ones
   launches stop <id>         stop what a launch started
+  others [--json] [--all]    other dev and web servers listening here that no launch holds (Vite, webpack,
+                             Next, Nacara, dotnet watch, Fable, npm scripts, http.server, Jupyter...): folder,
+                             kind, ports, URL, pid, age, who started it; --all adds the system's listeners
+  others stop <pid>          SIGTERM to one of them
   who <port>                 the launch holding a port, else the process listening on it
 
 Options:
@@ -261,6 +265,38 @@ let launches (sub: string list) =
     eprintf "%s" usage
     2
 
+let printOther (i: Others.Instance) =
+  let title = if i.title <> "" then $"  \"{i.title}\"" else ""
+  AnsiConsole.MarkupLine $"[bold]{Markup.Escape i.project}[/]  [cyan]{Markup.Escape i.kind}[/]  pid {i.pid}  up {Markup.Escape i.uptime}{Markup.Escape title}"
+  for u in i.urls do
+    AnsiConsole.MarkupLine $"  {Markup.Escape u}"
+  AnsiConsole.MarkupLine $"  [grey]in {Markup.Escape (home i.cwd)}[/]"
+  AnsiConsole.MarkupLine $"  [grey]{Markup.Escape i.command}[/]"
+  AnsiConsole.MarkupLine $"  by [bold]{Markup.Escape i.by}[/]  [grey]{Markup.Escape i.chain}[/]"
+
+let others (sub: string list) =
+  match sub with
+  | [ "stop"; pid ] ->
+    match Others.stop (int pid) with
+    | Ok i ->
+      say Success $"sent SIGTERM to {i.kind} {i.project} (pid {i.pid})"
+      0
+    | Error e ->
+      say Fail e
+      1
+  | flags when flags |> List.forall (fun f -> f = "--json" || f = "--all") ->
+    let found = Others.discover (List.contains "--all" flags) true
+    if List.contains "--json" flags then
+      printfn "%s" (Launches.toJson found)
+    elif found.Length = 0 then
+      printfn "no other dev or web server listens here (--all lists every listener)"
+    else
+      for i in found do printOther i
+    0
+  | _ ->
+    eprintf "%s" usage
+    2
+
 let who (port: int) =
   match Launches.holderOf (Launches.home ()) port with
   | Some l ->
@@ -415,6 +451,8 @@ let main argv =
     printf "%s" usage
     0
   | args ->
+    // who started this process, read before its parent can exit or it detaches
+    Launches.Current.capture ()
     let noBrowserEnv =
       Environment.GetEnvironmentVariable "SMOOTHDEV_WEB_NO_BROWSER" = "1"
 
@@ -433,7 +471,9 @@ let main argv =
     | _ -> ()
 
     match command with
+    | "launches" :: "--others" :: sub -> others sub
     | "launches" :: sub -> launches sub
+    | "others" :: sub -> others sub
     | [ "who"; port ] -> who (int port)
     | [ "scan" ] ->
       match Config.scanFromCache dir with
