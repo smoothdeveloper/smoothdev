@@ -177,5 +177,28 @@
       "uptime": "3m10s"
     }
   ],
-  "messages": []
+  "messages": [],
+  "launches": [
+    {
+      "id": "20261020-091500-4242",
+      "status": "active",
+      "by": "code",
+      "chain": "zsh (4240) <- code (812)",
+      "command": "site dev",
+      "dir": "~/src/docs",
+      "started": "12m",
+      "ports": [
+        {
+          "port": 5400,
+          "role": "front",
+          "url": "http://localhost:5400/docs/"
+        },
+        {
+          "port": 8080,
+          "role": "site",
+          "url": "http://localhost:8080/docs/"
+        }
+      ]
+    }
+  ]
 }

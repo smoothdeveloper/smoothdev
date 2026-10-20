@@ -278,6 +278,26 @@ th {{ color: var(--sd-muted); font-weight: 500; }}
 </div>"""
     else nothing
 
+  /// Every smoothdev-web launch that runs on this machine, whatever its folder: who started it and the
+  /// ports it holds (what `smoothdev-web launches` prints).
+  member this.launchesCard (c: Console) =
+    let launches = c.launches |> Option.ofObj |> Option.defaultValue [||]
+    let row (l: Launch) =
+      let ports =
+        l.ports |> Array.map (fun p ->
+          let label = $"{p.port} {p.role}"
+          if p.url <> "" then html $"""<div><a href={p.url} target="_blank" rel="noopener">{label}</a></div>"""
+          else html $"""<div>{label}</div>""")
+      html $"""<tr><td title={l.id}>{l.command}</td><td>{l.dir}</td><td title={l.chain}>{l.by}</td>
+<td class={if l.status = "ended" then "bad" else "ok"}>{l.status}</td><td>{l.started}</td><td>{ports}</td></tr>"""
+    if launches.Length > 0 then
+      html $"""
+<div class="card launches">
+  <h3>Launches · {string launches.Length}</h3>
+  <table><tr><th>command</th><th>folder</th><th>by</th><th>state</th><th>since</th><th>ports</th></tr>{launches |> Array.map row}</table>
+</div>"""
+    else nothing
+
   /// A scan hit that is not a site: what runs for it, with links, and how to drive it.
   member this.appView (c: Console) (r: ScanRow) =
     let live = runningFor c.running r
@@ -338,7 +358,7 @@ th {{ color: var(--sd-muted); font-weight: 500; }}
 </header>
 <main>
   {this.sidebar c}
-  <section class="content">{banner}{this.runningCard c}{body}{unmounted}</section>
+  <section class="content">{banner}{this.runningCard c}{body}{this.launchesCard c}{unmounted}</section>
 </main>
 <div class="messages">{toasts}</div>"""
 

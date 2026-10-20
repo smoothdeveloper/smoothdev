@@ -72,6 +72,23 @@ type Running =
     state  : string
     uptime : string }
 
+/// A port a launch claimed, with what it is for.
+type LaunchPort =
+  { port : int
+    role : string
+    url  : string }
+
+/// A smoothdev-web invocation that runs, from the launch registry (~/.smoothdev/launches), any folder.
+type Launch =
+  { id      : string
+    status  : string   // active | running
+    by      : string   // the launcher, or the first parent process that is not a shell
+    chain   : string   // the parent processes
+    command : string
+    dir     : string
+    started : string   // how long ago
+    ports   : LaunchPort array }
+
 type Console =
   { root      : string
     demo      : bool
@@ -82,6 +99,7 @@ type Console =
     unmounted : Unmounted array
     busy      : string
     running   : Running array
+    launches  : Launch array
     messages  : Message array }
 
 /// Scan hits grouped by their first folder (a repository under a workspace), groups in path order,

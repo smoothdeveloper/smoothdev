@@ -208,6 +208,29 @@ let consoleJson (s: State) =
     w.WriteString("uptime", Actions.uptime e)
     w.WriteEndObject()
   w.WriteEndArray()
+  w.WriteStartArray "launches"
+  let userHome = Environment.GetFolderPath Environment.SpecialFolder.UserProfile
+  for l in (try Launches.list (Launches.home ()) false with _ -> [||]) do
+    let lead, chain = Launches.by l
+    let age = DateTimeOffset.Now - l.startedAt
+    w.WriteStartObject()
+    w.WriteString("id", l.id)
+    w.WriteString("status", Launches.status l)
+    w.WriteString("by", lead)
+    w.WriteString("chain", chain)
+    w.WriteString("command", String.concat " " l.command)
+    w.WriteString("dir", (if l.dir.StartsWith userHome then "~" + l.dir.Substring userHome.Length else l.dir))
+    w.WriteString("started", (if age.TotalHours >= 1.0 then $"{int age.TotalHours}h{age.Minutes:D2}m" elif age.TotalMinutes >= 1.0 then $"{age.Minutes}m" else $"{age.Seconds}s"))
+    w.WriteStartArray "ports"
+    for p in l.ports |> Array.sortBy _.port do
+      w.WriteStartObject()
+      w.WriteNumber("port", p.port)
+      w.WriteString("role", p.role)
+      w.WriteString("url", p.url)
+      w.WriteEndObject()
+    w.WriteEndArray()
+    w.WriteEndObject()
+  w.WriteEndArray()
   w.WriteStartArray "messages"
   for m in s.Messages do
     w.WriteStartObject()

@@ -176,6 +176,10 @@ let processTable () =
     [| for KeyValue(pid, (ppid, exe)) in comm ->
          pid, ppid, (match Path.GetFileName exe with null -> exe | n -> n), (match args.TryFind pid with Some(_, a) -> a | None -> exe) |]
 
+/// A command line as recorded: its first 200 characters (a shell running a script carries the script).
+let private clip (command: string) =
+  if command.Length <= 200 then command else command.Substring(0, 200) + "…"
+
 /// The processes above pid, its parent first, up to the first process (or 16 levels).
 let ancestry (pid: int) =
   let table = processTable () |> Array.map (fun (p, pp, n, c) -> p, (pp, n, c)) |> Map.ofArray
@@ -184,7 +188,7 @@ let ancestry (pid: int) =
     match table.TryFind p with
     | Some(ppid, _, _) when ppid > 0 && depth < 16 ->
       match table.TryFind ppid with
-      | Some(_, name, command) -> up ppid (depth + 1) ({ pid = ppid; name = name; command = command } :: acc)
+      | Some(_, name, command) -> up ppid (depth + 1) ({ pid = ppid; name = name; command = clip command } :: acc)
       | None -> List.rev acc
     | _ -> List.rev acc
 
@@ -267,6 +271,23 @@ let finish home (me: Launch) =
 /// The live launch holding port.
 let holderOf home (port: int) =
   list home false |> Array.tryFind (fun l -> l.ports |> Array.exists (fun p -> p.port = port))
+
+/// Who started it: the launcher name, then the parent processes up to the first one that is not a shell
+/// or a dotnet host (an editor, a terminal, an agent), at most four.
+let by (l: Launch) =
+  let shells = set [ "zsh"; "-zsh"; "bash"; "-bash"; "sh"; "fish"; "dotnet"; "login" ]
+  let chain =
+    l.ancestors
+    |> Array.truncate 6
+    |> Array.map (fun a -> $"{a.name} ({a.pid})")
+  let named =
+    l.ancestors |> Array.tryFind (fun a -> not (shells.Contains a.name)) |> Option.map _.name
+  let lead =
+    match l.launcher, named with
+    | "", Some n -> n
+    | "", None -> "?"
+    | launcher, _ -> launcher
+  lead, String.concat " <- " chain
 
 /// This process's launch: created on its first claim or child, so commands that start nothing
 /// (status, logs, launches) leave no entry.

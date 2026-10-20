@@ -206,25 +206,8 @@ let private home (path: string) =
   let h = Environment.GetFolderPath Environment.SpecialFolder.UserProfile
   if path.StartsWith h then "~" + path.Substring h.Length else path
 
-/// Who started it: the launcher name, then the parent processes up to the first one that is not a shell
-/// or a dotnet host (an editor, a terminal, an agent), at most four.
-let launchedBy (l: Launches.Launch) =
-  let shells = set [ "zsh"; "-zsh"; "bash"; "-bash"; "sh"; "fish"; "dotnet"; "login" ]
-  let chain =
-    l.ancestors
-    |> Array.truncate 6
-    |> Array.map (fun a -> $"{a.name} ({a.pid})")
-  let named =
-    l.ancestors |> Array.tryFind (fun a -> not (shells.Contains a.name)) |> Option.map _.name
-  let lead =
-    match l.launcher, named with
-    | "", Some n -> n
-    | "", None -> "?"
-    | launcher, _ -> launcher
-  lead, String.concat " <- " chain
-
 let printLaunch (l: Launches.Launch) =
-  let lead, chain = launchedBy l
+  let lead, chain = Launches.by l
   let state = Launches.status l
   let commandText = l.command |> String.concat " "
   AnsiConsole.MarkupLine $"[bold]{Markup.Escape l.id}[/]  {state}  [cyan]{Markup.Escape commandText}[/]  in {Markup.Escape (home l.dir)}  {ago l.startedAt} ago"
@@ -244,7 +227,7 @@ let launches (sub: string list) =
     if List.contains "--json" sub then
       let rows =
         ls |> Array.map (fun l ->
-          let lead, _ = launchedBy l
+          let lead, _ = Launches.by l
           {| l with status = Launches.status l; by = lead |})
       printfn "%s" (Launches.toJson rows)
     elif ls.Length = 0 then
@@ -282,7 +265,7 @@ let who (port: int) =
   match Launches.holderOf (Launches.home ()) port with
   | Some l ->
     let p = l.ports |> Array.find (fun p -> p.port = port)
-    let lead, chain = launchedBy l
+    let lead, chain = Launches.by l
     printfn "%d  %s  %s" port p.role (if p.url = "" then "(claimed, not bound yet)" else p.url)
     printfn "  launch %s (%s), %s in %s" l.id (Launches.status l) (String.concat " " l.command) (home l.dir)
     printfn "  by %s  %s" lead chain

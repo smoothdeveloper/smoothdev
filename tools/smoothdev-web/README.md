@@ -112,6 +112,9 @@ stopped fable (pid 61721)
 | `site dev [--port N]` | the site's watch, each mounted Vite app under its route, and one front port for all of them |
 | `site dist` / `site preview` | the site's build with each app built into its route, in `.smoothdev/web/site-dist`; served as a static host would |
 | `site stop\|status [--json]` | stop / list what `site dev` and `site preview` started (`--site <name>` picks one of several sites); `--json`: `[{ name, pid, port, url, log }]`, the front first |
+| `launches [--json] [--all]` | every smoothdev-web launch on this machine, any folder: who started it (parent processes, `SMOOTHDEV_WEB_LAUNCHER`), its folder, command, ports and processes |
+| `launches stop <id>` | stop what that launch started |
+| `who <port>` | the launch that holds the port, else the process listening on it |
 
 Global options: `--dir <app folder>` (default: the current folder; the nearest `smoothdev.web.json` at
 or above it wins), `--no-browser` (print URLs instead; also `SMOOTHDEV_WEB_NO_BROWSER=1`).
@@ -328,6 +331,17 @@ keep running until `stop`.
   that moved to another group), waits up to 8 s, then `SIGKILL`s what is left. Zombies count as gone.
 - A component whose leader exited while other members of its group still run shows as `orphaned`;
   `stop` ends them.
+
+## Launch registry
+
+Every invocation that starts something records a launch in `~/.smoothdev/launches/<id>.json`
+(`SMOOTHDEV_HOME` moves it): its PID, parent processes, `SMOOTHDEV_WEB_LAUNCHER` when the caller
+sets it, user, folder, command, the ports it claimed with their role and URL, and the processes it
+started. Ports are claimed under `~/.smoothdev/launches/.lock`, skipping every port a live launch
+holds, before anything binds them, so launches started at the same time, in one folder or several,
+get distinct ports. A launch whose command and processes are gone moves to `launches/ended/`.
+What a launch starts gets `SMOOTHDEV_WEB_LAUNCH=<id>`. `launches`, `who <port>` and the web console
+read it. Details: [Launches and ports](../../docs/content/tools/smoothdev-web/launches.md).
 
 ## Limitations and roadmap
 
