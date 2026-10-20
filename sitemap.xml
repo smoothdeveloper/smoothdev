@@ -7,13 +7,22 @@
     <loc>https://smoothdeveloper.github.io/smoothdev/guide/introduction/</loc>
   </url>
   <url>
+    <loc>https://smoothdeveloper.github.io/smoothdev/guide/ui/</loc>
+  </url>
+  <url>
     <loc>https://smoothdeveloper.github.io/smoothdev/tools/smoothdev-web/</loc>
+  </url>
+  <url>
+    <loc>https://smoothdeveloper.github.io/smoothdev/tools/smoothdev-web/launches/</loc>
   </url>
   <url>
     <loc>https://smoothdeveloper.github.io/smoothdev/tools/smoothdev-web/platforms/</loc>
   </url>
   <url>
     <loc>https://smoothdeveloper.github.io/smoothdev/tools/smoothdev-web/server-url/</loc>
+  </url>
+  <url>
+    <loc>https://smoothdeveloper.github.io/smoothdev/tools/smoothdev-web/sites/</loc>
   </url>
   <url>
     <loc>https://smoothdeveloper.github.io/smoothdev/tools/smoothdev-web/vite-proxy/</loc>
