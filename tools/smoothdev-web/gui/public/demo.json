@@ -148,5 +148,34 @@
       "reason": "library build (build.lib): no page to mount"
     }
   ],
+  "running": [
+    {
+      "dir": "acme",
+      "name": "site-front",
+      "pid": 41004,
+      "port": 5400,
+      "url": "http://127.0.0.1:5400/acme/",
+      "state": "running",
+      "uptime": "12m02s"
+    },
+    {
+      "dir": "acme",
+      "name": "site-nacara",
+      "pid": 41001,
+      "port": 8080,
+      "url": "http://127.0.0.1:8080/acme/",
+      "state": "running",
+      "uptime": "12m04s"
+    },
+    {
+      "dir": "acme/wasm",
+      "name": "vite",
+      "pid": 41010,
+      "port": 5180,
+      "url": "http://127.0.0.1:5180/",
+      "state": "running",
+      "uptime": "3m10s"
+    }
+  ],
   "messages": []
 }

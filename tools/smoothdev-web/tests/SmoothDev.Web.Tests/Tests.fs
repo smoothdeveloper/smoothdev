@@ -872,6 +872,29 @@ let console =
         Expect.equal (Model.toasts c.messages |> Array.map _.text) [| "hello" |] "a fresh message is a toast"
         Expect.equal (Model.confidenceLevel "high", Model.confidenceLevel "?") (3, 0) "meter"
       }
+
+      test "the console lists what runs under the root, sites and plain apps, with their URLs" {
+        use dir = new TempDir()
+        siteFixture dir
+        // a dev server started in an app folder (`smoothdev-web dev start` there): this process stands in for it
+        let app = Path.Combine(dir.path, "wasm")
+        let entry name port : Entry =
+          { name = name; pid = Environment.ProcessId; pgid = 0; port = port; url = $"http://127.0.0.1:{port}/"
+            log = ""; command = [||]; startedAt = DateTimeOffset.Now; owner = Environment.ProcessId }
+        State.add app (entry "vite" 5180)
+        State.add dir.path { entry "site-front" 5400 with url = "http://127.0.0.1:5400/demo/" }
+        State.add dir.path { entry "gui" 5399 with url = "http://127.0.0.1:5399/" }
+        let state = WebConsole.State dir.path
+        state.Rescan()
+        let started = DateTime.Now
+        while (state.Scanning || state.Plan.IsNone) && DateTime.Now - started < TimeSpan.FromSeconds 20.0 do
+          Threading.Thread.Sleep 50
+        let c = Text.Json.JsonSerializer.Deserialize<Model.Console>(WebConsole.consoleJson state) |> nonNull
+        let opened = Model.openable c.running |> Array.map (fun r -> r.dir, r.name, r.url)
+        Expect.equal opened [| "", "site-front", "http://127.0.0.1:5400/demo/"; "wasm", "vite", "http://127.0.0.1:5180/" |] "the front first, the console itself left out"
+        let wasmRow = c.scan |> Array.find (fun r -> r.path = "wasm")
+        Expect.equal (Model.runningFor c.running wasmRow |> Array.map _.name) [| "vite" |] "an app's row finds its dev server"
+      }
     ]
 
 let front =

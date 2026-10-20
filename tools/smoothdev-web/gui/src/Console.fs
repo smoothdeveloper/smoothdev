@@ -62,8 +62,11 @@ input[type=search] {{ width: 100%%; box-sizing: border-box; padding: 7px 10px; b
 .group {{ margin: 6px 0 10px; }}
 .group > .name {{ font: 600 11px var(--sd-sans); text-transform: uppercase; letter-spacing: .8px; color: var(--sd-muted);
   padding: 4px 8px; cursor: pointer; user-select: none; }}
-.row {{ display: grid; grid-template-columns: 52px 1fr; align-items: baseline; gap: 6px; padding: 4px 8px; border-radius: 6px;
+.row {{ display: grid; grid-template-columns: 52px 1fr auto; align-items: baseline; gap: 6px; padding: 4px 8px; border-radius: 6px;
   cursor: pointer; font-size: 13px; }}
+.row .dot {{ width: 7px; height: 7px; border-radius: 999px; background: var(--sd-ok); box-shadow: 0 0 6px var(--sd-ok); }}
+.card.running a {{ font: 600 13px var(--sd-mono); color: var(--sd-bright); text-decoration: none; }}
+.card.running a:hover {{ color: var(--sd-accent); }}
 .row:hover {{ background: var(--sd-panel-2); }}
 .row.sel {{ background: var(--sd-glow); outline: 1px solid var(--sd-accent); }}
 .row .path {{ font: 12px var(--sd-mono); color: var(--sd-ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }}
@@ -150,11 +153,13 @@ th {{ color: var(--sd-muted); font-weight: 500; }}
       let items =
         [ for r in rs ->
             let site = siteOfRow c.sites r
-            let isSel = site |> Option.exists (fun s -> s.project = this.selected)
-            let pick (_: Event) = site |> Option.iter (fun s -> this.selected <- s.project)
+            let key = match site with Some s -> s.project | None -> "row:" + r.path
+            let isSel = key = this.selected
+            let live = if site.IsNone && (runningFor c.running r).Length > 0 then html $"""<span class="dot" title="running"></span>""" else nothing
+            let pick (_: Event) = this.selected <- key
             let shown = if name = "." then r.path else r.path.Substring(name.Length + 1)
             html $"""<div class={if isSel then "row sel" else "row"} title={r.path + "  " + r.note} @click={pick}>
-  <span class={"kind k-" + r.kind}>{kindLabel r.kind}</span><span class="path">{if shown = "" then "." else shown}</span></div>""" ]
+  <span class={"kind k-" + r.kind}>{kindLabel r.kind}</span><span class="path">{if shown = "" then "." else shown}</span>{live}</div>""" ]
       html $"""<div class="group"><div class="name">{name}</div>{items}</div>"""
     let progress =
       if c.scanning then html $"""<span class="pill">scanning · {string c.visited} folders</span>"""
@@ -259,6 +264,45 @@ th {{ color: var(--sd-muted); font-weight: 500; }}
   <div style="margin-top: 12px"><sd-log site={s.project} .names={s.running |> Array.map _.name}></sd-log></div>
 </div>"""
 
+  /// Every started website under the root, with a link that opens it: what `scan gui --classic` listed.
+  member this.runningCard (c: Console) =
+    let items = openable c.running
+    let row (r: Running) =
+      html $"""<tr><td><a href={r.url} target="_blank" rel="noopener">{r.url} ↗</a></td><td>{if r.dir = "" then "." else r.dir}</td>
+<td>{r.name}</td><td class={if r.state = "running" then "ok" else "bad"}>{r.state}</td><td>{r.uptime}</td></tr>"""
+    if items.Length > 0 then
+      html $"""
+<div class="card running">
+  <h3>Running · {string items.Length}</h3>
+  <table><tr><th>open</th><th>folder</th><th>name</th><th>state</th><th>up</th></tr>{items |> Array.map row}</table>
+</div>"""
+    else nothing
+
+  /// A scan hit that is not a site: what runs for it, with links, and how to drive it.
+  member this.appView (c: Console) (r: ScanRow) =
+    let live = runningFor c.running r
+    let dir = if r.kind = "config" || r.path.EndsWith ".fsproj" then (match r.path.LastIndexOf '/' with -1 -> "." | i -> r.path.Substring(0, i)) else r.path
+    let rows =
+      [ for p in live ->
+          let url = if p.url <> "" then html $"""<a href={p.url} target="_blank" rel="noopener">{p.url} ↗</a>""" else nothing
+          html $"""<tr><td>{p.name}</td><td>{string p.pid}</td><td>{if p.port > 0 then string p.port else ""}</td>
+<td class={if p.state = "running" then "ok" else "bad"}>{p.state}</td><td>{p.uptime}</td><td>{url}</td></tr>""" ]
+    let firstUrl = live |> Array.tryFind (fun p -> p.url <> "") |> Option.map _.url
+    let openIt (_: Event) = firstUrl |> Option.iter (fun u -> window.``open`` (u, "_blank") |> ignore)
+    let table =
+      if live.Length = 0 then html $"""<p class="empty">Nothing runs for it. In a terminal: <code>smoothdev-web --dir {dir} dev start</code> (or <code>scan gui --classic</code> for start and stop buttons).</p>"""
+      else html $"""<table><tr><th>name</th><th>pid</th><th>port</th><th>state</th><th>up</th><th>url</th></tr>{rows}</table>"""
+    html $"""
+<div class="card">
+  <h2><span class={"kind k-" + r.kind}>{kindLabel r.kind}</span>{r.path}</h2>
+  <div class="meta"><span>{r.note}</span></div>
+  <div class="actions"><button class="primary" ?disabled={firstUrl.IsNone} @click={openIt}>↗ Open</button></div>
+</div>
+<div class="card">
+  <h3>Processes</h3>
+  {table}
+</div>"""
+
   override this.render() =
     match this.data with
     | None ->
@@ -266,10 +310,12 @@ th {{ color: var(--sd-muted); font-weight: 500; }}
       html $"""<header><span class="brand"><span class="mark"></span>smoothdev·web</span></header><p class="empty">{text}</p>"""
     | Some c ->
       let site = c.sites |> Array.tryFind (fun s -> s.project = this.selected)
+      let row = c.scan |> Array.tryFind (fun r -> "row:" + r.path = this.selected)
       let body =
-        match site with
-        | Some s -> this.siteView c s
-        | None ->
+        match site, row with
+        | Some s, _ -> this.siteView c s
+        | None, Some r -> this.appView c r
+        | None, None ->
           html $"""<div class="card"><h2>No documentation site here</h2><p>smoothdev-web looks for an F# project calling <code>Nacara.run</code>. The Vite apps it found are listed on the left.</p></div>"""
       let unmounted =
         if c.unmounted.Length > 0 then
@@ -292,7 +338,7 @@ th {{ color: var(--sd-muted); font-weight: 500; }}
 </header>
 <main>
   {this.sidebar c}
-  <section class="content">{banner}{body}{unmounted}</section>
+  <section class="content">{banner}{this.runningCard c}{body}{unmounted}</section>
 </main>
 <div class="messages">{toasts}</div>"""
 

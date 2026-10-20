@@ -62,6 +62,16 @@ type Message =
     at    : string
     age   : int }     // seconds since
 
+/// Something running under the root, any app or site: `dir` is its folder relative to the root ("" for the root).
+type Running =
+  { dir    : string
+    name   : string
+    pid    : int
+    port   : int
+    url    : string
+    state  : string
+    uptime : string }
+
 type Console =
   { root      : string
     demo      : bool
@@ -71,6 +81,7 @@ type Console =
     sites     : Site array
     unmounted : Unmounted array
     busy      : string
+    running   : Running array
     messages  : Message array }
 
 /// Scan hits grouped by their first folder (a repository under a workspace), groups in path order,
@@ -134,3 +145,17 @@ let confidenceLevel (c: string) =
   | "medium" -> 2
   | "low" -> 1
   | _ -> 0
+
+/// What runs and can be opened: entries with a URL, a site's front first, then by folder and name.
+let openable (running: Running array) =
+  running
+  |> Array.filter (fun r -> r.url <> "")
+  |> Array.sortBy (fun r -> (if r.name = "site-front" then 0 elif r.name = "site-preview" then 1 else 2), r.dir, r.name)
+
+/// The entries of a scan hit's app: those of the nearest folder, at or above the hit, that has some
+/// (an app's state sits next to its config, which can be above the client folder).
+let runningFor (running: Running array) (row: ScanRow) =
+  let covers (dir: string) = dir = "" || row.path = dir || row.path.StartsWith(dir + "/")
+  match running |> Array.map _.dir |> Array.distinct |> Array.filter covers |> Array.sortByDescending _.Length |> Array.tryHead with
+  | Some dir -> running |> Array.filter (fun r -> r.dir = dir)
+  | None -> [||]

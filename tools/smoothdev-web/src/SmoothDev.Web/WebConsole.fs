@@ -83,6 +83,34 @@ let private writeApp (w: Utf8JsonWriter) (root: string) (a: Sites.ViteApp) =
   w.WriteBoolean("middleware", a.middleware)
   w.WriteString("outDir", Path.GetRelativePath(root, a.outDir))
 
+/// Folders that may hold smoothdev-web state under the root: each scan hit's folder and the folders
+/// above it (an app's config sits at or above its client), the root, and each site's repository.
+let stateDirs (s: State) =
+  let root = s.Root
+  let within (d: string) = d = root || d.StartsWith(root + string Path.DirectorySeparatorChar)
+  let rec upTo (d: string) =
+    [ if within d then
+        yield d
+        if d <> root then
+          match Path.GetDirectoryName d |> Option.ofObj with
+          | None -> ()
+          | Some parent -> yield! upTo parent ]
+  [| yield root
+     for r in s.View.Rows() do
+       let full = Path.GetFullPath(root </> r.path)
+       let dir = if File.Exists full then Path.GetDirectoryName full |> Option.ofObj |> Option.defaultValue root else full
+       yield! upTo dir
+     for site in s.Plan |> Option.map _.sites |> Option.defaultValue [||] do
+       yield site.repo |]
+  |> Array.distinct
+  |> Array.filter (fun d -> File.Exists(State.file d))
+
+/// Everything that runs under the root, wherever it was started: (folder, entry), the console itself left out.
+let running (s: State) =
+  stateDirs s
+  |> Array.collect (fun d -> State.live d |> Array.map (fun e -> d, e))
+  |> Array.filter (fun (_, e) -> Component.parse e.name <> Some Component.Gui)
+
 /// The page's whole view, as `Model.Console` reads it.
 let consoleJson (s: State) =
   use stream = new MemoryStream()
@@ -166,6 +194,18 @@ let consoleJson (s: State) =
     writeApp w s.Root u.app
     w.WriteEndObject()
     w.WriteString("reason", u.reason)
+    w.WriteEndObject()
+  w.WriteEndArray()
+  w.WriteStartArray "running"
+  for dir, e in running s do
+    w.WriteStartObject()
+    w.WriteString("dir", (let r = Path.GetRelativePath(s.Root, dir).Replace('\\', '/') in if r = "." then "" else r))
+    w.WriteString("name", e.name)
+    w.WriteNumber("pid", e.pid)
+    w.WriteNumber("port", e.port)
+    w.WriteString("url", e.url)
+    w.WriteString("state", Actions.stateText (State.runState e))
+    w.WriteString("uptime", Actions.uptime e)
     w.WriteEndObject()
   w.WriteEndArray()
   w.WriteStartArray "messages"

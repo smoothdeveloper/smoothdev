@@ -384,11 +384,10 @@ let startVite ctx (c: Client) (server: Entry option) =
     port
     $"http://127.0.0.1:{port}/"
 
+/// "started <name> (pid, port) <url>": the URL last and whole, so a terminal makes it a link.
 let startedText (e: Entry) =
-  if e.port > 0 then
-    $"started {e.name} (pid {e.pid}, port {e.port})"
-  else
-    $"started {e.name} (pid {e.pid})"
+  let where = if e.port > 0 then $"pid {e.pid}, port {e.port}" else $"pid {e.pid}"
+  if e.url <> "" then $"started {e.name} ({where}) {e.url}" else $"started {e.name} ({where})"
 
 /// Stops the named components that run, last started first.
 let stopNames ctx (names: string array) =
