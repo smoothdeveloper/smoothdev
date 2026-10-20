@@ -115,6 +115,8 @@ stopped fable (pid 61721)
 | `launches [--json] [--all]` | every smoothdev-web launch on this machine, any folder: who started it (parent processes, `SMOOTHDEV_WEB_LAUNCHER`), its folder, command, ports and processes |
 | `launches stop <id>` | stop what that launch started |
 | `who <port>` | the launch that holds the port, else the process listening on it |
+| `others [--json] [--all]` | other dev and web servers listening here that no launch holds: kind (Vite, webpack, Next, Nacara, dotnet watch, Fable, npm scripts, http.server, Jupyter...), folder, URL, pid, age, who started it |
+| `others stop <pid>` | `SIGTERM` to one of them |
 
 Global options: `--dir <app folder>` (default: the current folder; the nearest `smoothdev.web.json` at
 or above it wins), `--no-browser` (print URLs instead; also `SMOOTHDEV_WEB_NO_BROWSER=1`).
@@ -341,7 +343,9 @@ started. Ports are claimed under `~/.smoothdev/launches/.lock`, skipping every p
 holds, before anything binds them, so launches started at the same time, in one folder or several,
 get distinct ports. A launch whose command and processes are gone moves to `launches/ended/`.
 What a launch starts gets `SMOOTHDEV_WEB_LAUNCH=<id>`. `launches`, `who <port>` and the web console
-read it. Details: [Launches and ports](../../docs/content/tools/smoothdev-web/launches.md).
+read it. The chain of parent processes is read as smoothdev-web starts, and handed to what it
+starts, so a launch run in the background or detached still names who started it. `others` and the
+console's *Other running instances* card list the servers that no launch holds. Details: [Launches and ports](../../docs/content/tools/smoothdev-web/launches.md).
 
 ## Limitations and roadmap
 
