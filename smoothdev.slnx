@@ -12,6 +12,12 @@
     <File Path="README.md" />
   </Folder>
   <Folder Name="/tools/" />
+  <Folder Name="/ui/">
+    <Project Path="ui/smoothdev.ui/smoothdev.ui.fsproj" />
+  </Folder>
+  <Folder Name="/ui/tests/">
+    <Project Path="ui/tests/smoothdev.ui.tests/smoothdev.ui.tests.fsproj" />
+  </Folder>
   <Folder Name="/tools/smoothdev-web/" />
   <Folder Name="/tools/smoothdev-web/src/">
     <Project Path="tools/smoothdev-web/src/SmoothDev.Web/SmoothDev.Web.fsproj" />

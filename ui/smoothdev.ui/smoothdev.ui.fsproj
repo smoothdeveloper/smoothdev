@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- The controls' models, for any target: plain F#, no UI library, compiled by .NET and by Fable. -->
+  <PropertyGroup>
+    <PackageId>smoothdev.ui</PackageId>
+    <Authors>Gauthier Segay</Authors>
+    <PackageLicenseExpression>AGPL-3.0-only</PackageLicenseExpression>
+    <Description>Models of common UI controls (theme tokens, scrubber, colour sets, row editor, sortable list, tree, tabs, editor host), independent of any UI toolkit.</Description>
+    <PackageTags>fable;fable-library;fable-dotnet;fable-javascript;ui;controls</PackageTags>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Theme.fs" />
+    <Compile Include="Colours.fs" />
+    <Compile Include="Scrubber.fs" />
+    <Compile Include="Rows.fs" />
+    <Compile Include="Sortable.fs" />
+    <Compile Include="Tree.fs" />
+    <Compile Include="Tabs.fs" />
+    <Compile Include="Editor.fs" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Fable compiles a library from its sources: they go in the package's fable/ folder -->
+    <Content Include="@(Compile)" Pack="true" PackagePath="fable/%(RelativeDir)%(Filename)%(Extension)" />
+    <Content Include="$(MSBuildProjectFullPath)" Pack="true" PackagePath="fable/" />
+  </ItemGroup>
+  <Import Project="..\..\.paket\Paket.Restore.targets" />
+</Project>
